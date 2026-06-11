@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CFG, DPR, WORLDS } from '../config.js';
+import { CFG, DPR, WORLDS, getSelectedSkin } from '../config.js';
 import Runner from '../entities/Runner.js';
 import audio from '../systems/AudioManager.js';
 import portal from '../platform/PortalAdapter.js';
@@ -11,6 +11,7 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
+    this.skin = getSelectedSkin();
     this.elapsed = 0;
     this.score = 0;
     this.best = Number(localStorage.getItem(CFG.BEST_KEY) || 0);
@@ -161,12 +162,13 @@ export default class GameScene extends Phaser.Scene {
       })
       .setDepth(2);
 
+    const skinColors = this.skin[def.key];
     const runner = new Runner(
       this,
       CFG.RUNNER_X,
       def.groundY,
-      def.runnerBody,
-      def.runnerAccent,
+      skinColors.body,
+      skinColors.accent,
       def.runnerEye
     );
 

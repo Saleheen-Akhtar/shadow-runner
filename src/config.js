@@ -46,6 +46,23 @@ export const CFG = {
 // stays crisp when the canvas is scaled up to fill the screen.
 export const DPR = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
+// Character skins, unlocked when the player's BEST score reaches
+// `unlock`. Each skin defines runner colors per world.
+export const SKINS = [
+  { name: 'CLASSIC', unlock: 0, light: { body: 0x23233a, accent: 0xff5a5a }, dark: { body: 0xe9e7f4, accent: 0x59c2ff } },
+  { name: 'EMBER', unlock: 500, light: { body: 0x6b2d1f, accent: 0xffb347 }, dark: { body: 0xffd9a0, accent: 0xff5a3c } },
+  { name: 'TOXIC', unlock: 1000, light: { body: 0x1f4d2e, accent: 0x9dff57 }, dark: { body: 0xddffe2, accent: 0x2fe07a } },
+  { name: 'ROYAL', unlock: 2500, light: { body: 0x3a2a6b, accent: 0xffd34d }, dark: { body: 0xe6dcff, accent: 0xb98aff } },
+  { name: 'VOID', unlock: 5000, light: { body: 0x101014, accent: 0xff2fa0 }, dark: { body: 0xffffff, accent: 0x00e8ff } },
+];
+
+export const SKIN_KEY = 'shadow-runner-skin';
+
+export function getSelectedSkin() {
+  const i = Number(localStorage.getItem(SKIN_KEY) || 0);
+  return SKINS[Math.min(Math.max(i, 0), SKINS.length - 1)];
+}
+
 // The two stacked worlds. Readability relies on luminance contrast and
 // shape differences (crates vs spikes), not hue - colorblind friendly.
 export const WORLDS = {

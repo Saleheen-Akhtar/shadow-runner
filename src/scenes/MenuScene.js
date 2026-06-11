@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CFG, WORLDS } from '../config.js';
+import { CFG, WORLDS, SKINS, SKIN_KEY, getSelectedSkin } from '../config.js';
 import Runner from '../entities/Runner.js';
 import { applyHiDpi } from '../systems/display.js';
 
@@ -66,22 +66,27 @@ export default class MenuScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    // Two live runners jogging in place.
+    // Two live runners jogging in place, wearing the selected skin.
+    const skin = getSelectedSkin();
     this.runners = Object.values(WORLDS).map(
       (def) =>
-        new Runner(this, 140, def.groundY, def.runnerBody, def.runnerAccent, def.runnerEye)
+        new Runner(this, 140, def.groundY, skin[def.key].body, skin[def.key].accent, def.runnerEye)
     );
 
     const best = Number(localStorage.getItem(CFG.BEST_KEY) || 0);
     if (best > 0) {
       this.add
-        .text(cx, 462, `BEST: ${best}`, {
+        .text(CFG.WIDTH - 16, 12, `BEST ${best}`, {
           fontFamily: 'monospace',
-          fontSize: '18px',
+          fontSize: '16px',
           color: '#ffd34d',
+          stroke: '#000000',
+          strokeThickness: 3,
         })
-        .setOrigin(0.5);
+        .setOrigin(1, 0);
     }
+
+    this.buildSkinPicker(cx, 464, best);
 
     const prompt = this.add
       .text(cx, 500, 'PRESS ANY KEY OR TAP TO RUN', {
@@ -98,6 +103,56 @@ export default class MenuScene extends Phaser.Scene {
     this.input.once('pointerdown', () => this.scene.start('Game'));
 
     applyHiDpi(this);
+  }
+
+  // Row of skin swatches. Unlocked skins are clickable; locked ones are
+  // dimmed and show the best score required to unlock them.
+  buildSkinPicker(cx, y, best) {
+    const selIdx = Math.min(
+      Math.max(Number(localStorage.getItem(SKIN_KEY) || 0), 0),
+      SKINS.length - 1
+    );
+
+    this.add
+      .text(cx, y - 28, `SKINS \u2014 ${SKINS[selIdx].name}`, {
+        fontFamily: 'monospace',
+        fontSize: '13px',
+        color: '#b8b6c4',
+      })
+      .setOrigin(0.5);
+
+    SKINS.forEach((s, i) => {
+      const x = cx + (i - (SKINS.length - 1) / 2) * 58;
+      const unlocked = best >= s.unlock;
+
+      if (i === selIdx) {
+        this.add.circle(x, y, 20, 0xffffff, 0).setStrokeStyle(2, 0xffffff);
+      }
+
+      const swatch = this.add
+        .circle(x, y, 13, unlocked ? s.light.body : 0x555560)
+        .setStrokeStyle(3, unlocked ? s.dark.accent : 0x777780);
+
+      if (unlocked) {
+        swatch.setInteractive({ useHandCursor: true });
+        swatch.on('pointerdown', (pointer, lx, ly, event) => {
+          event.stopPropagation();
+          localStorage.setItem(SKIN_KEY, String(i));
+          this.scene.restart();
+        });
+      } else {
+        this.add
+          .text(x, y + 24, String(s.unlock), {
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            color: '#777780',
+          })
+          .setOrigin(0.5);
+        this.add
+          .text(x, y, '\uD83D\uDD12', { fontSize: '13px' })
+          .setOrigin(0.5);
+      }
+    });
   }
 
   update(time, delta) {
