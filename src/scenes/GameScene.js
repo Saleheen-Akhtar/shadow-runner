@@ -30,6 +30,11 @@ export default class GameScene extends Phaser.Scene {
     // Power-up scheduling
     this.nextPowerupAt = this.rand(CFG.POWERUP_MIN_MS, CFG.POWERUP_MAX_MS);
 
+    // Coins & combo
+    this.coins = 0;
+    this.combo = 0;
+    this.lastCoinAt = -99999;
+
     this.createUi();
     this.bindInput();
 
@@ -211,6 +216,8 @@ export default class GameScene extends Phaser.Scene {
       stripes,
       obstacles: [],
       powerups: [],
+      coins: [],
+      nextCoinAt: 3000 + Math.random() * 2000,
       nextSpawnAt: 1200 + Math.random() * 600,
       frozenUntil: 0,
       freezeOverlay,
@@ -333,7 +340,18 @@ export default class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     this.bestText = this.add
-      .text(cx, 50, `BEST ${this.best}`, {
+      .text(cx - 45, 50, `BEST ${this.best}`, {
+        fontFamily: 'monospace',
+        fontSize: '14px',
+        color: '#ffd34d',
+        stroke: '#000000',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(20);
+
+    this.coinText = this.add
+      .text(cx + 45, 50, '\u25cf 0', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#ffd34d',
@@ -392,20 +410,40 @@ export default class GameScene extends Phaser.Scene {
   }
 
   bindInput() {
+    // Desktop: WASD column controls the top runner, arrows the bottom.
     const kb = this.input.keyboard;
-    kb.on('keydown-W', () => this.handleAction('light'));
-    kb.on('keydown-UP', () => this.handleAction('light'));
-    kb.on('keydown-S', () => this.handleAction('dark'));
-    kb.on('keydown-DOWN', () => this.handleAction('dark'));
+    kb.on('keydown-W', () => this.handleAction('light', 'jump'));
+    kb.on('keydown-S', () => this.handleAction('light', 'slide'));
+    kb.on('keydown-UP', () => this.handleAction('dark', 'jump'));
+    kb.on('keydown-DOWN', () => this.handleAction('dark', 'slide'));
 
-    // Mobile / mouse: top half controls the light world, bottom half the dark.
-    // pointer.y is in canvas pixels, so compare against the canvas midpoint.
+    // Touch: tap = jump, swipe down = slide. The half of the screen where
+    // the gesture STARTS picks the world. Two simultaneous touches work.
+    this.input.addPointer(1);
+    this.touch = new Map();
     this.input.on('pointerdown', (pointer) => {
-      this.handleAction(pointer.y < this.scale.height / 2 ? 'light' : 'dark');
+      this.touch.set(pointer.id, { y0: pointer.y, acted: false });
+    });
+    this.input.on('pointermove', (pointer) => {
+      const st = this.touch.get(pointer.id);
+      if (!st || st.acted || !pointer.isDown) return;
+      const threshold = 24 * (this.scale.height / CFG.HEIGHT);
+      const dy = pointer.y - st.y0;
+      if (Math.abs(dy) < threshold) return;
+      st.acted = true;
+      const world = st.y0 < this.scale.height / 2 ? 'light' : 'dark';
+      this.handleAction(world, dy > 0 ? 'slide' : 'jump');
+    });
+    this.input.on('pointerup', (pointer) => {
+      const st = this.touch.get(pointer.id);
+      this.touch.delete(pointer.id);
+      if (!st || st.acted) return;
+      const world = st.y0 < this.scale.height / 2 ? 'light' : 'dark';
+      this.handleAction(world, 'jump');
     });
   }
 
-  handleAction(worldKey) {
+  handleAction(worldKey, action = 'jump') {
     if (this.isGameOver) return;
     if (this.isPaused) {
       this.resumeGame();
@@ -413,26 +451,35 @@ export default class GameScene extends Phaser.Scene {
     }
 
     if (this.syncActive) {
-      // One input jumps both. First input wins; an immediate second
+      // One input controls both. First input wins; an immediate second
       // input is ignored (not penalized).
       if (this.elapsed - this.lastSyncJumpAt < CFG.SYNC_INPUT_DEBOUNCE_MS) return;
       this.lastSyncJumpAt = this.elapsed;
-      let jumped = false;
+      let acted = false;
       Object.values(this.worlds).forEach((w) => {
-        if (this.elapsed >= w.frozenUntil && w.runner.jump()) {
-          jumped = true;
-          w.dust.explode(4, CFG.RUNNER_X, w.def.groundY);
+        if (this.elapsed < w.frozenUntil) return;
+        if (action === 'jump') {
+          if (w.runner.jump()) {
+            acted = true;
+            w.dust.explode(4, CFG.RUNNER_X, w.def.groundY);
+          }
+        } else if (w.runner.slide()) {
+          acted = true;
         }
       });
-      if (jumped) audio.play('jump');
+      if (acted) audio.play(action);
       return;
     }
 
     const w = this.worlds[worldKey];
     if (this.elapsed < w.frozenUntil) return; // frozen world ignores input
-    if (w.runner.jump()) {
-      audio.play('jump');
-      w.dust.explode(4, CFG.RUNNER_X, w.def.groundY);
+    if (action === 'jump') {
+      if (w.runner.jump()) {
+        audio.play('jump');
+        w.dust.explode(4, CFG.RUNNER_X, w.def.groundY);
+      }
+    } else if (w.runner.slide()) {
+      audio.play('slide');
     }
   }
 
@@ -508,6 +555,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     if (!this.syncActive && this.elapsed >= w.nextSpawnAt) this.trySpawn(w);
+    if (!this.syncActive && this.elapsed >= w.nextCoinAt) this.spawnCoinPattern(w);
 
     w.runner.update(dt, this.speed / CFG.MAX_SPEED);
     if (w.runner.consumeLanded()) w.dust.explode(6, CFG.RUNNER_X, w.def.groundY);
@@ -547,6 +595,23 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
+    for (let i = w.coins.length - 1; i >= 0; i--) {
+      const c = w.coins[i];
+      c.x -= this.speed * dt;
+      c.gfx.x = c.x;
+      if (c.x < -30) {
+        c.gfx.destroy();
+        w.coins.splice(i, 1);
+        continue;
+      }
+      const circle = new Phaser.Geom.Circle(c.x, c.y, c.r);
+      if (Phaser.Geom.Intersects.CircleToRectangle(circle, hitbox)) {
+        this.collectCoin(c);
+        c.gfx.destroy();
+        w.coins.splice(i, 1);
+      }
+    }
+
     return false;
   }
 
@@ -571,9 +636,11 @@ export default class GameScene extends Phaser.Scene {
   // readable by shape, not color.
   randomSpec() {
     const r = Math.random();
-    if (r < 0.45) return { type: 'crate', w: 38, h: 38 };
-    if (r < 0.65) return { type: 'crate2', w: 38, h: 76 };
-    return { type: 'spikes', w: 50, h: 40 };
+    if (r < 0.3) return { type: 'crate', w: 38, h: 38 };
+    if (r < 0.5) return { type: 'crate2', w: 38, h: 76 };
+    if (r < 0.75) return { type: 'spikes', w: 50, h: 40 };
+    // Hanging gate: a low gap underneath - must SLIDE, cannot be jumped.
+    return { type: 'gate', w: 30, h: 130, gap: 34 };
   }
 
   spawnObstacle(w, spec, x, arrival) {
@@ -594,6 +661,21 @@ export default class GameScene extends Phaser.Scene {
     } else if (spec.type === 'crate2') {
       buildCrate(-19);
       buildCrate(-57);
+    } else if (spec.type === 'gate') {
+      const slabH = spec.h;
+      const slabCy = -(spec.gap + slabH / 2);
+      const slabTopAbs = def.groundY - spec.gap - slabH;
+      const chainH = Math.max(slabTopAbs - def.top, 0);
+      if (chainH > 0) {
+        parts.push(
+          this.add.rectangle(0, -(spec.gap + slabH + chainH / 2), 6, chainH, def.crateEdge, 0.8)
+        );
+      }
+      parts.push(this.add.rectangle(0, slabCy, spec.w, slabH, def.crate).setStrokeStyle(3, def.crateEdge));
+      // Hazard stripes + lit bottom edge marking the safe gap.
+      parts.push(this.add.rectangle(0, slabCy + 24, 26, 6, 0xffd34d, 0.85).setRotation(0.6));
+      parts.push(this.add.rectangle(0, slabCy + 44, 26, 6, 0xffd34d, 0.85).setRotation(0.6));
+      parts.push(this.add.rectangle(0, -(spec.gap + 2), spec.w + 4, 4, 0xffffff, 0.35));
     } else {
       parts.push(this.add.rectangle(0, -7, 52, 10, def.crateEdge));
       parts.push(this.add.rectangle(0, -10, 52, 2, 0xffffff, 0.15));
@@ -605,11 +687,58 @@ export default class GameScene extends Phaser.Scene {
     }
 
     const gfx = this.add.container(x, def.groundY, parts).setDepth(3);
-    w.obstacles.push({ x, w: spec.w, h: spec.h, gy: def.groundY, arrival, gfx });
+    w.obstacles.push({ x, w: spec.w, h: spec.h, gap: spec.gap, gy: def.groundY, arrival, gfx });
   }
 
   obstacleRect(o) {
+    if (o.gap) {
+      // Hanging gate: solid from (gap above ground) upward.
+      return new Phaser.Geom.Rectangle(o.x - o.w / 2 + 4, o.gy - o.gap - o.h + 2, o.w - 8, o.h - 4);
+    }
     return new Phaser.Geom.Rectangle(o.x - o.w / 2 + 5, o.gy - o.h + 5, o.w - 10, o.h - 5);
+  }
+
+  // Coin rows on the ground or arcs that reward a well-timed jump.
+  spawnCoinPattern(w) {
+    const gy = w.def.groundY;
+    const baseX = CFG.WIDTH + 80;
+    const arc = Math.random() < 0.5;
+    const ys = arc ? [gy - 34, gy - 78, gy - 100, gy - 78, gy - 34] : [gy - 32, gy - 32, gy - 32, gy - 32];
+    ys.forEach((y, i) => {
+      const x = baseX + i * 36;
+      const gfx = this.add.circle(x, y, 9, 0xffd34d).setStrokeStyle(2, 0xa87b1f).setDepth(3);
+      // Spin: squash horizontally and back, staggered along the pattern.
+      this.tweens.add({ targets: gfx, scaleX: 0.25, duration: 380, yoyo: true, repeat: -1, delay: i * 60 });
+      w.coins.push({ x, y, r: 11, gfx });
+    });
+    w.nextCoinAt = this.elapsed + this.rand(CFG.COIN_MIN_MS, CFG.COIN_MAX_MS);
+  }
+
+  collectCoin(c) {
+    if (this.elapsed - this.lastCoinAt > CFG.COMBO_TIMEOUT_MS) this.combo = 0;
+    this.combo++;
+    this.lastCoinAt = this.elapsed;
+    const value = Math.min(5 + this.combo, 30);
+    this.score += value;
+    this.coins++;
+    this.coinText.setText(`\u25cf ${this.coins}`);
+    this.floatText(c.x, c.y - 14, this.combo > 1 ? `+${value} x${this.combo}` : `+${value}`);
+    audio.play('coin');
+  }
+
+  floatText(x, y, str) {
+    const t = this.add
+      .text(x, y, str, {
+        fontFamily: 'monospace',
+        fontSize: '16px',
+        color: '#ffd34d',
+        stroke: '#000000',
+        strokeThickness: 3,
+      })
+      .setOrigin(0.5)
+      .setDepth(10);
+    t.setResolution(DPR * 1.25);
+    this.tweens.add({ targets: t, y: y - 30, alpha: 0, duration: 650, onComplete: () => t.destroy() });
   }
 
   startSync() {

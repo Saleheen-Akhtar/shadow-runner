@@ -45,21 +45,21 @@ export default class MenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.add
-      .text(cx, 168, 'W / \u2191  jump top runner      Mobile: tap top half', {
+      .text(cx, 168, 'W jump / S slide \u2014 top runner', {
         fontFamily: 'monospace',
         fontSize: '15px',
         color: '#1d1d24',
       })
       .setOrigin(0.5);
     this.add
-      .text(cx, 400, 'S / \u2193  jump bottom runner      Mobile: tap bottom half', {
+      .text(cx, 400, '\u2191 jump / \u2193 slide \u2014 bottom runner', {
         fontFamily: 'monospace',
         fontSize: '15px',
         color: '#f2f0e8',
       })
       .setOrigin(0.5);
     this.add
-      .text(cx, 432, 'SYNC: one input jumps both \u2022 Freeze orb pauses the other world', {
+      .text(cx, 432, 'Mobile: tap = jump, swipe down = slide \u2022 SYNC: one input controls both', {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#b8b6c4',

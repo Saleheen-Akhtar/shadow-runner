@@ -7,6 +7,7 @@ export const CFG = {
   GRAVITY: 2400,
   JUMP_VELOCITY: -820,
   RUNNER_X: 150,
+  SLIDE_MS: 600,
 
   // Difficulty ramp: speed = BASE + RAMP * seconds, capped at MAX
   BASE_SPEED: 320,
@@ -32,6 +33,11 @@ export const CFG = {
   POWERUP_MIN_MS: 15000,
   POWERUP_MAX_MS: 25000,
   FREEZE_MS: 4000,
+
+  // Coins & combo
+  COIN_MIN_MS: 4000,
+  COIN_MAX_MS: 8000,
+  COMBO_TIMEOUT_MS: 5000,
 
   BEST_KEY: 'shadow-runner-best',
 };

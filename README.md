@@ -5,7 +5,8 @@ An HTML5 endless runner where you control **two versions of the same character a
 ## Core mechanics
 
 - Two stacked worlds (light on top, dark on bottom), each with its own runner and obstacles
-- One input per character: jump
+- Two actions per character: jump (crates, spikes) and slide (hanging gates)
+- Coins spawn in rows and arcs; consecutive pickups build a combo multiplier
 - Speed ramps up over time (capped)
 - **Sync events**: both worlds occasionally face the same obstacle - one input jumps both runners
 - **Freeze power-up**: collecting it freezes the *other* world for a few seconds (a frozen world scores nothing)
@@ -15,8 +16,8 @@ An HTML5 endless runner where you control **two versions of the same character a
 
 | Platform | Light runner (top) | Dark runner (bottom) |
 |---|---|---|
-| Desktop | `W` or `↑` | `S` or `↓` |
-| Mobile | Tap top half | Tap bottom half |
+| Desktop | `W` jump / `S` slide | `↑` jump / `↓` slide |
+| Mobile | Tap = jump, swipe down = slide (top half) | Tap = jump, swipe down = slide (bottom half) |
 
 ## Tech stack
 
