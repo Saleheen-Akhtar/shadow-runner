@@ -1,8 +1,9 @@
 import Phaser from 'phaser';
-import { CFG, WORLDS } from '../config.js';
+import { CFG, DPR, WORLDS } from '../config.js';
 import Runner from '../entities/Runner.js';
 import audio from '../systems/AudioManager.js';
 import portal from '../platform/PortalAdapter.js';
+import { applyHiDpi } from '../systems/display.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -42,6 +43,7 @@ export default class GameScene extends Phaser.Scene {
     });
 
     portal.gameplayStart();
+    applyHiDpi(this);
   }
 
   createWorld(def) {
@@ -307,8 +309,9 @@ export default class GameScene extends Phaser.Scene {
     kb.on('keydown-DOWN', () => this.handleAction('dark'));
 
     // Mobile / mouse: top half controls the light world, bottom half the dark.
+    // pointer.y is in canvas pixels, so compare against the canvas midpoint.
     this.input.on('pointerdown', (pointer) => {
-      this.handleAction(pointer.y < CFG.HEIGHT / 2 ? 'light' : 'dark');
+      this.handleAction(pointer.y < this.scale.height / 2 ? 'light' : 'dark');
     });
   }
 
@@ -537,9 +540,9 @@ export default class GameScene extends Phaser.Scene {
     this.syncText.setVisible(true);
     this.syncTween.resume();
     this.divider.setFillStyle(0xffd34d);
-    // Camera zoom punch to sell the moment.
-    this.cameras.main.zoomTo(1.04, 150, 'Sine.easeInOut');
-    this.time.delayedCall(320, () => this.cameras.main.zoomTo(1, 220, 'Sine.easeInOut'));
+    // Camera zoom punch to sell the moment (relative to the DPR base zoom).
+    this.cameras.main.zoomTo(DPR * 1.04, 150, 'Sine.easeInOut');
+    this.time.delayedCall(320, () => this.cameras.main.zoomTo(DPR, 220, 'Sine.easeInOut'));
     audio.play('sync');
   }
 

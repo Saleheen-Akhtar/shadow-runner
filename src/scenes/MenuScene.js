@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CFG, WORLDS } from '../config.js';
 import Runner from '../entities/Runner.js';
+import { applyHiDpi } from '../systems/display.js';
 
 const TITLE_FONT = '"Arial Black", Impact, sans-serif';
 
@@ -95,6 +96,8 @@ export default class MenuScene extends Phaser.Scene {
 
     this.input.keyboard.once('keydown', () => this.scene.start('Game'));
     this.input.once('pointerdown', () => this.scene.start('Game'));
+
+    applyHiDpi(this);
   }
 
   update(time, delta) {

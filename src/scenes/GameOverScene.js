@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CFG } from '../config.js';
+import { applyHiDpi } from '../systems/display.js';
 
 const TITLE_FONT = '"Arial Black", Impact, sans-serif';
 
@@ -83,5 +84,7 @@ export default class GameOverScene extends Phaser.Scene {
       this.input.keyboard.once('keydown', () => this.scene.start('Game'));
       this.input.once('pointerdown', () => this.scene.start('Game'));
     });
+
+    applyHiDpi(this);
   }
 }

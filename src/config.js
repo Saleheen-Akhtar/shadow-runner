@@ -36,6 +36,10 @@ export const CFG = {
   BEST_KEY: 'shadow-runner-best',
 };
 
+// Render at device-pixel resolution (capped at 2x) so shape-based art
+// stays crisp when the canvas is scaled up to fill the screen.
+export const DPR = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
+
 // The two stacked worlds. Readability relies on luminance contrast and
 // shape differences (crates vs spikes), not hue - colorblind friendly.
 export const WORLDS = {
