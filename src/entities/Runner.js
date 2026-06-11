@@ -1,12 +1,13 @@
 import Phaser from 'phaser';
 import { CFG } from '../config.js';
 
-// An animated humanoid runner built from primitives: head, torso, two
-// arms and two legs with a procedural run cycle, an air pose while
-// jumping, and a soft drop shadow. Movement is implied by the world
-// scrolling; the runner only handles vertical physics.
+// An animated humanoid runner built from primitives: head with eye,
+// torso, two arms and two legs with a procedural run cycle, an air pose
+// while jumping, squash & stretch, an after-image trail in the air and
+// a soft drop shadow. Movement is implied by the world scrolling; the
+// runner only handles vertical physics.
 export default class Runner {
-  constructor(scene, x, groundY, bodyColor, accentColor) {
+  constructor(scene, x, groundY, bodyColor, accentColor, eyeColor = 0xffffff) {
     this.scene = scene;
     this.x = x;
     this.groundY = groundY;
@@ -14,6 +15,8 @@ export default class Runner {
     this.vy = 0;
     this.onGround = true;
     this.phase = Math.random() * Math.PI * 2;
+    this.ghostTimer = 0;
+    this.bodyColor = bodyColor;
     this._landed = false;
 
     this.shadow = scene.add.ellipse(x, groundY + 5, 42, 10, 0x000000, 0.25).setDepth(2);
@@ -27,6 +30,7 @@ export default class Runner {
     this.armF = scene.add.rectangle(-2, -42, 5, 19, c).setOrigin(0.5, 0.05);
     this.head = scene.add.circle(1, -51, 7.5, c);
     this.band = scene.add.rectangle(1, -52, 15, 4, accentColor);
+    this.eye = scene.add.circle(4.5, -52.5, 2.2, eyeColor);
 
     this.container = scene.add
       .container(x, groundY, [
@@ -37,6 +41,7 @@ export default class Runner {
         this.armF,
         this.head,
         this.band,
+        this.eye,
       ])
       .setDepth(4);
   }
@@ -45,6 +50,15 @@ export default class Runner {
     if (!this.onGround) return false;
     this.vy = CFG.JUMP_VELOCITY;
     this.onGround = false;
+    // Stretch on take-off.
+    this.scene.tweens.add({
+      targets: this.container,
+      scaleX: 0.88,
+      scaleY: 1.12,
+      duration: 90,
+      yoyo: true,
+      onComplete: () => this.container.setScale(1),
+    });
     return true;
   }
 
@@ -66,11 +80,28 @@ export default class Runner {
       this.legB.rotation = -0.55;
       this.armF.rotation = -1.1;
       this.armB.rotation = 0.7;
+
+      // After-image trail while airborne.
+      this.ghostTimer += dt;
+      if (this.ghostTimer > 0.07) {
+        this.ghostTimer = 0;
+        this.spawnGhost();
+      }
+
       if (this.y >= this.groundY) {
         this.y = this.groundY;
         this.vy = 0;
         this.onGround = true;
         this._landed = true;
+        // Squash on landing.
+        this.scene.tweens.add({
+          targets: this.container,
+          scaleX: 1.16,
+          scaleY: 0.84,
+          duration: 80,
+          yoyo: true,
+          onComplete: () => this.container.setScale(1),
+        });
       }
       this.container.y = this.y;
     }
@@ -80,6 +111,19 @@ export default class Runner {
     const f = Phaser.Math.Clamp(1 - air / 160, 0.35, 1);
     this.shadow.scaleX = f;
     this.shadow.alpha = 0.25 * f;
+  }
+
+  spawnGhost() {
+    const g = this.scene.add
+      .ellipse(this.x - 8, this.container.y - 30, 18, 42, this.bodyColor, 0.16)
+      .setDepth(3);
+    this.scene.tweens.add({
+      targets: g,
+      alpha: 0,
+      x: g.x - 28,
+      duration: 260,
+      onComplete: () => g.destroy(),
+    });
   }
 
   // True once per landing - used by the scene for dust particles.

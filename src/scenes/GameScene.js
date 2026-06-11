@@ -127,7 +127,14 @@ export default class GameScene extends Phaser.Scene {
       })
       .setDepth(2);
 
-    const runner = new Runner(this, CFG.RUNNER_X, def.groundY, def.runnerBody, def.runnerAccent);
+    const runner = new Runner(
+      this,
+      CFG.RUNNER_X,
+      def.groundY,
+      def.runnerBody,
+      def.runnerAccent,
+      def.runnerEye
+    );
 
     const dust = this.add
       .particles(0, 0, 'dot', {
@@ -139,6 +146,22 @@ export default class GameScene extends Phaser.Scene {
         emitting: false,
       })
       .setDepth(5);
+
+    // Gentle snowfall while this world is frozen.
+    const snow = this.add
+      .particles(0, 0, 'dot', {
+        x: { min: 0, max: CFG.WIDTH },
+        y: def.top,
+        lifespan: 1800,
+        speedY: { min: 60, max: 120 },
+        speedX: { min: -30, max: 10 },
+        scale: { start: 0.5, end: 0.2 },
+        alpha: { start: 0.8, end: 0 },
+        tint: 0xdff2ff,
+        frequency: 60,
+        emitting: false,
+      })
+      .setDepth(6);
 
     const freezeOverlay = this.add
       .rectangle(cx, cy, CFG.WIDTH, def.height, 0x7fd4ff, 0.22)
@@ -160,6 +183,7 @@ export default class GameScene extends Phaser.Scene {
       def,
       runner,
       dust,
+      snow,
       parallax,
       stars,
       stripes,
@@ -175,6 +199,35 @@ export default class GameScene extends Phaser.Scene {
   createUi() {
     const cx = CFG.WIDTH / 2;
     this.divider = this.add.rectangle(cx, 270, CFG.WIDTH, 4, 0x888888).setDepth(8);
+
+    // Translucent HUD panel behind the score.
+    const hud = this.add.graphics().setDepth(19);
+    hud.fillStyle(0x000000, 0.35);
+    hud.fillRoundedRect(cx - 90, 8, 180, 62, 12);
+
+    // Subtle cinematic vignette (top and bottom).
+    const vg = this.add.graphics().setDepth(25);
+    vg.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0.3, 0.3, 0, 0);
+    vg.fillRect(0, 0, CFG.WIDTH, 36);
+    vg.fillGradientStyle(0x000000, 0x000000, 0x000000, 0x000000, 0, 0, 0.3, 0.3);
+    vg.fillRect(0, CFG.HEIGHT - 36, CFG.WIDTH, 36);
+
+    // Speed lines kick in at high velocity.
+    this.speedLines = this.add
+      .particles(0, 0, 'dot', {
+        x: CFG.WIDTH + 10,
+        y: { min: 20, max: CFG.HEIGHT - 20 },
+        lifespan: 380,
+        speedX: { min: -1400, max: -1100 },
+        scaleX: 3,
+        scaleY: 0.15,
+        alpha: { start: 0.22, end: 0 },
+        frequency: 70,
+        emitting: false,
+      })
+      .setDepth(9);
+    this.linesOn = false;
+    this.lastMilestone = 0;
 
     this.scoreText = this.add
       .text(cx, 14, '0', {
@@ -318,6 +371,21 @@ export default class GameScene extends Phaser.Scene {
       if (this.updateWorld(w, dt)) died = true;
     });
 
+    // Speed lines at high velocity.
+    const fast = this.speed > 560;
+    if (fast !== this.linesOn) {
+      this.linesOn = fast;
+      if (fast) this.speedLines.start();
+      else this.speedLines.stop();
+    }
+
+    // Score milestone pulse every 100 points.
+    const milestone = Math.floor(this.score / 100);
+    if (milestone > this.lastMilestone) {
+      this.lastMilestone = milestone;
+      this.tweens.add({ targets: this.scoreText, scale: 1.25, duration: 120, yoyo: true });
+    }
+
     this.scoreText.setText(String(Math.floor(this.score)));
     if (died) this.endRun();
   }
@@ -326,6 +394,8 @@ export default class GameScene extends Phaser.Scene {
     const frozen = this.elapsed < w.frozenUntil;
     w.freezeOverlay.setVisible(frozen);
     w.freezeText.setVisible(frozen);
+    if (frozen && !w.snow.emitting) w.snow.start();
+    if (!frozen && w.snow.emitting) w.snow.stop();
     if (frozen) return false; // no movement, no score, invulnerable
 
     // Each active world contributes to the score; a frozen world does not.
@@ -421,6 +491,9 @@ export default class GameScene extends Phaser.Scene {
       parts.push(this.add.rectangle(0, cy, 38, 38, def.crate).setStrokeStyle(3, def.crateEdge));
       parts.push(this.add.rectangle(0, cy, 44, 4, def.crateEdge).setRotation(0.785));
       parts.push(this.add.rectangle(0, cy, 44, 4, def.crateEdge).setRotation(-0.785));
+      // Pseudo-3D shading: lit top edge, shaded right side.
+      parts.push(this.add.rectangle(0, cy - 14, 32, 5, 0xffffff, 0.18));
+      parts.push(this.add.rectangle(14, cy, 7, 34, 0x000000, 0.18));
     };
 
     if (spec.type === 'crate') {
@@ -430,8 +503,11 @@ export default class GameScene extends Phaser.Scene {
       buildCrate(-57);
     } else {
       parts.push(this.add.rectangle(0, -7, 52, 10, def.crateEdge));
+      parts.push(this.add.rectangle(0, -10, 52, 2, 0xffffff, 0.15));
       [-16, 0, 16].forEach((sx) => {
         parts.push(this.add.triangle(sx, -25, 0, 30, 16, 30, 8, 0, def.spike));
+        // Lit left face of each spike.
+        parts.push(this.add.triangle(sx - 2, -27, 0, 22, 9, 22, 5, 0, 0xffffff, 0.16));
       });
     }
 
@@ -461,6 +537,9 @@ export default class GameScene extends Phaser.Scene {
     this.syncText.setVisible(true);
     this.syncTween.resume();
     this.divider.setFillStyle(0xffd34d);
+    // Camera zoom punch to sell the moment.
+    this.cameras.main.zoomTo(1.04, 150, 'Sine.easeInOut');
+    this.time.delayedCall(320, () => this.cameras.main.zoomTo(1, 220, 'Sine.easeInOut'));
     audio.play('sync');
   }
 
