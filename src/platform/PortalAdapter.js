@@ -29,7 +29,11 @@ class PortalAdapter {
   async rewardedAd() {
     // Show a rewarded ad (e.g. for a revive). Resolve `true` if the
     // player earned the reward.
-    return false;
+    //
+    // Dev stub: simulate a successful ad after a short delay so the
+    // revive flow can be tested locally. Real portal builds replace
+    // this with PokiSDK.rewardedBreak() / CrazyGames rewarded ad.
+    return new Promise((resolve) => setTimeout(() => resolve(true), 600));
   }
 }
 

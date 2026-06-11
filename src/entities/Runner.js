@@ -19,6 +19,7 @@ export default class Runner {
     this.phase = Math.random() * Math.PI * 2;
     this.ghostTimer = 0;
     this.bodyColor = bodyColor;
+    this.accentColor = accentColor;
     this._landed = false;
 
     this.shadow = scene.add.ellipse(x, groundY + 5, 42, 10, 0x000000, 0.25).setDepth(2);
@@ -195,5 +196,14 @@ export default class Runner {
     [this.armB, this.legB, this.torso, this.legF, this.armF, this.band, this.head].forEach((p) =>
       p.setFillStyle(0xd33a3a)
     );
+  }
+
+  // Restore original colors after a revive.
+  revive() {
+    [this.armB, this.legB, this.torso, this.legF, this.armF, this.head].forEach((p) =>
+      p.setFillStyle(this.bodyColor)
+    );
+    this.band.setFillStyle(this.accentColor);
+    this.endSlide();
   }
 }

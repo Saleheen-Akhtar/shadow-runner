@@ -35,6 +35,13 @@ export default class GameScene extends Phaser.Scene {
     this.combo = 0;
     this.lastCoinAt = -99999;
 
+    // Revive (one per run)
+    this.reviveUsed = false;
+    this.reviveBusy = false;
+    this.reviveObjs = null;
+    this.reviveTimer = null;
+    this.invulnUntil = 0;
+
     this.createUi();
     this.bindInput();
 
@@ -570,7 +577,10 @@ export default class GameScene extends Phaser.Scene {
         w.obstacles.splice(i, 1);
         continue;
       }
-      if (Phaser.Geom.Intersects.RectangleToRectangle(this.obstacleRect(o), hitbox)) {
+      if (
+        this.elapsed >= this.invulnUntil &&
+        Phaser.Geom.Intersects.RectangleToRectangle(this.obstacleRect(o), hitbox)
+      ) {
         w.runner.setDead();
         return true;
       }
@@ -808,6 +818,156 @@ export default class GameScene extends Phaser.Scene {
     this.isGameOver = true;
     audio.play('hit');
     portal.gameplayStop();
+    this.cameras.main.shake(250, 0.01);
+
+    if (!this.reviveUsed) {
+      this.time.delayedCall(500, () => this.showRevivePrompt());
+    } else {
+      this.time.delayedCall(700, () => this.finishRun());
+    }
+  }
+
+  showRevivePrompt() {
+    const cx = CFG.WIDTH / 2;
+    const objs = [];
+
+    objs.push(this.add.rectangle(cx, 270, CFG.WIDTH, CFG.HEIGHT, 0x000000, 0.6).setDepth(40));
+    const panel = this.add.graphics().setDepth(41);
+    panel.fillStyle(0x10101a, 0.95);
+    panel.fillRoundedRect(cx - 200, 160, 400, 220, 16);
+    panel.lineStyle(2, 0xffd34d, 0.7);
+    panel.strokeRoundedRect(cx - 200, 160, 400, 220, 16);
+    objs.push(panel);
+
+    const title = this.add
+      .text(cx, 196, 'CONTINUE?', {
+        fontFamily: '"Arial Black", Impact, sans-serif',
+        fontSize: '32px',
+        color: '#ffd34d',
+      })
+      .setOrigin(0.5)
+      .setDepth(42);
+    objs.push(title);
+
+    this.reviveCountdownText = this.add
+      .text(cx, 248, '3', {
+        fontFamily: '"Arial Black", Impact, sans-serif',
+        fontSize: '40px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5)
+      .setDepth(42);
+    objs.push(this.reviveCountdownText);
+
+    const reviveBtn = this.add
+      .text(cx, 312, ' WATCH AD & REVIVE ', {
+        fontFamily: 'monospace',
+        fontSize: '20px',
+        color: '#1d1d24',
+        backgroundColor: '#ffd34d',
+        padding: { x: 10, y: 8 },
+      })
+      .setOrigin(0.5)
+      .setDepth(42)
+      .setInteractive({ useHandCursor: true });
+    reviveBtn.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.tryRevive();
+    });
+    objs.push(reviveBtn);
+
+    const skipBtn = this.add
+      .text(cx, 358, 'NO THANKS', {
+        fontFamily: 'monospace',
+        fontSize: '15px',
+        color: '#8a8a9a',
+      })
+      .setOrigin(0.5)
+      .setDepth(42)
+      .setInteractive({ useHandCursor: true });
+    skipBtn.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.finishRun();
+    });
+    objs.push(skipBtn);
+
+    objs.forEach((o) => {
+      if (o.setResolution && o.style) o.setResolution(DPR * 1.25);
+    });
+    this.reviveObjs = objs;
+
+    let remaining = 3;
+    this.reviveTimer = this.time.addEvent({
+      delay: 1000,
+      repeat: 2,
+      callback: () => {
+        remaining--;
+        if (remaining <= 0) this.finishRun();
+        else this.reviveCountdownText.setText(String(remaining));
+      },
+    });
+  }
+
+  clearRevivePrompt() {
+    if (this.reviveTimer) {
+      this.reviveTimer.remove(false);
+      this.reviveTimer = null;
+    }
+    if (this.reviveObjs) {
+      this.reviveObjs.forEach((o) => o.destroy());
+      this.reviveObjs = null;
+    }
+  }
+
+  tryRevive() {
+    if (this.reviveBusy) return;
+    this.reviveBusy = true;
+    if (this.reviveTimer) {
+      this.reviveTimer.remove(false);
+      this.reviveTimer = null;
+    }
+    this.reviveCountdownText.setText('...');
+    portal.rewardedAd().then((ok) => {
+      this.reviveBusy = false;
+      if (ok) this.doRevive();
+      else this.finishRun();
+    });
+  }
+
+  doRevive() {
+    this.clearRevivePrompt();
+    this.reviveUsed = true;
+
+    Object.values(this.worlds).forEach((w) => {
+      w.obstacles.forEach((o) => o.gfx.destroy());
+      w.obstacles = [];
+      w.coins.forEach((c) => c.gfx.destroy());
+      w.coins = [];
+      w.powerups.forEach((p) => p.gfx.destroy());
+      w.powerups = [];
+      w.nextSpawnAt = this.elapsed + 1400;
+      w.nextCoinAt = this.elapsed + 3000;
+      w.runner.revive();
+      // Blink to telegraph invulnerability.
+      this.tweens.add({
+        targets: w.runner.container,
+        alpha: 0.25,
+        duration: 140,
+        yoyo: true,
+        repeat: 6,
+        onComplete: () => w.runner.container.setAlpha(1),
+      });
+    });
+
+    this.invulnUntil = this.elapsed + 2000;
+    this.combo = 0;
+    this.isGameOver = false;
+    portal.gameplayStart();
+  }
+
+  finishRun() {
+    if (this.isPaused === true && !this.isGameOver) return;
+    this.clearRevivePrompt();
 
     const finalScore = Math.floor(this.score);
     const isNewBest = finalScore > this.best;
@@ -816,8 +976,7 @@ export default class GameScene extends Phaser.Scene {
       localStorage.setItem(CFG.BEST_KEY, String(finalScore));
     }
 
-    this.cameras.main.shake(250, 0.01);
-    this.time.delayedCall(700, () => {
+    this.time.delayedCall(200, () => {
       this.scene.start('GameOver', { score: finalScore, best: this.best, isNewBest });
     });
   }
