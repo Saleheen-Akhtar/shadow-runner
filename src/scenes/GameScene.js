@@ -47,22 +47,102 @@ export default class GameScene extends Phaser.Scene {
   createWorld(def) {
     const cx = CFG.WIDTH / 2;
     const cy = def.top + def.height / 2;
-    this.add.rectangle(cx, cy, CFG.WIDTH, def.height, def.bg).setDepth(0);
+
+    // Sky gradient
+    const sky = this.add.graphics().setDepth(0);
+    sky.fillGradientStyle(def.skyTop, def.skyTop, def.skyBottom, def.skyBottom, 1);
+    sky.fillRect(0, def.top, CFG.WIDTH, def.height);
+
+    const parallax = [];
+    const stars = [];
+
+    if (def.key === 'light') {
+      // Sun with glow
+      this.add.circle(780, def.top + 62, 40, 0xffe2a8, 0.35).setDepth(0);
+      this.add.circle(780, def.top + 62, 26, 0xffd98a).setDepth(0);
+      // Drifting clouds (slow parallax)
+      for (let i = 0; i < 3; i++) {
+        const cl = this.add
+          .ellipse(120 + i * 340, def.top + 36 + Math.random() * 55, 95, 26, 0xffffff, 0.8)
+          .setDepth(0);
+        parallax.push({ obj: cl, factor: 0.12, halfW: 60 });
+      }
+      // Rolling hills
+      for (let i = 0; i < 3; i++) {
+        const h = this.add.ellipse(i * 420, def.groundY + 35, 430, 160, def.hill).setDepth(0);
+        parallax.push({ obj: h, factor: 0.25, halfW: 220 });
+      }
+      // Trees (mid distance)
+      for (let i = 0; i < 4; i++) {
+        const t = this.add
+          .triangle(80 + i * 260, def.groundY - 19, 0, 40, 28, 40, 14, 0, def.prop)
+          .setDepth(0);
+        parallax.push({ obj: t, factor: 0.5, halfW: 20 });
+      }
+    } else {
+      // Moon with glow
+      this.add.circle(200, def.top + 58, 34, 0xcfd8ff, 0.18).setDepth(0);
+      this.add.circle(200, def.top + 58, 20, 0xdfe6f0).setDepth(0);
+      // Twinkling stars
+      for (let i = 0; i < 16; i++) {
+        const s = this.add
+          .circle(Math.random() * CFG.WIDTH, def.top + 12 + Math.random() * 130, 1.5, 0xffffff)
+          .setDepth(0);
+        stars.push({ obj: s, tw: Math.random() * Math.PI * 2 });
+      }
+      // City skyline (far)
+      for (let i = 0; i < 7; i++) {
+        const bw = 55 + Math.random() * 50;
+        const bh = 60 + Math.random() * 75;
+        const b = this.add
+          .rectangle(i * 150, def.groundY - bh / 2 + 2, bw, bh, def.hill)
+          .setDepth(0);
+        parallax.push({ obj: b, factor: 0.25, halfW: bw / 2 });
+      }
+      // Antennas / rooftops (mid)
+      for (let i = 0; i < 4; i++) {
+        const a = this.add
+          .rectangle(120 + i * 250, def.groundY - 28, 7, 56, def.prop)
+          .setDepth(0);
+        parallax.push({ obj: a, factor: 0.5, halfW: 6 });
+      }
+    }
+
+    // Ground with scrolling stripes for speed feel
     this.add.rectangle(cx, def.groundY + 15, CFG.WIDTH, 30, def.ground).setDepth(1);
+    const stripes = [];
+    for (let i = 0; i < 8; i++) {
+      const st = this.add
+        .rectangle(i * 140 + 20, def.groundY + 16, 46, 4, def.stripe)
+        .setAlpha(0.7)
+        .setDepth(1);
+      stripes.push(st);
+    }
+
     this.add
       .text(16, def.top + 10, def.label, {
         fontFamily: 'monospace',
         fontSize: '14px',
-        color: def.key === 'light' ? '#9a978d' : '#4a4a58',
+        color: def.labelColor,
       })
       .setDepth(2);
 
-    const otherInk = def.key === 'light' ? WORLDS.dark.ink : WORLDS.light.ink;
-    const runner = new Runner(this, CFG.RUNNER_X, def.groundY, def.ink, otherInk);
+    const runner = new Runner(this, CFG.RUNNER_X, def.groundY, def.runnerBody, def.runnerAccent);
+
+    const dust = this.add
+      .particles(0, 0, 'dot', {
+        speed: { min: 40, max: 130 },
+        angle: { min: 220, max: 320 },
+        lifespan: 350,
+        scale: { start: 0.7, end: 0 },
+        tint: def.dust,
+        emitting: false,
+      })
+      .setDepth(5);
 
     const freezeOverlay = this.add
       .rectangle(cx, cy, CFG.WIDTH, def.height, 0x7fd4ff, 0.22)
-      .setDepth(5)
+      .setDepth(6)
       .setVisible(false);
     const freezeText = this.add
       .text(cx, cy, 'FROZEN', {
@@ -73,12 +153,16 @@ export default class GameScene extends Phaser.Scene {
         strokeThickness: 5,
       })
       .setOrigin(0.5)
-      .setDepth(6)
+      .setDepth(7)
       .setVisible(false);
 
     this.worlds[def.key] = {
       def,
       runner,
+      dust,
+      parallax,
+      stars,
+      stripes,
       obstacles: [],
       powerups: [],
       nextSpawnAt: 1200 + Math.random() * 600,
@@ -90,7 +174,7 @@ export default class GameScene extends Phaser.Scene {
 
   createUi() {
     const cx = CFG.WIDTH / 2;
-    this.add.rectangle(cx, 270, CFG.WIDTH, 4, 0x888888).setDepth(3);
+    this.divider = this.add.rectangle(cx, 270, CFG.WIDTH, 4, 0x888888).setDepth(8);
 
     this.scoreText = this.add
       .text(cx, 14, '0', {
@@ -189,7 +273,10 @@ export default class GameScene extends Phaser.Scene {
       this.lastSyncJumpAt = this.elapsed;
       let jumped = false;
       Object.values(this.worlds).forEach((w) => {
-        if (this.elapsed >= w.frozenUntil) jumped = w.runner.jump() || jumped;
+        if (this.elapsed >= w.frozenUntil && w.runner.jump()) {
+          jumped = true;
+          w.dust.explode(4, CFG.RUNNER_X, w.def.groundY);
+        }
       });
       if (jumped) audio.play('jump');
       return;
@@ -197,7 +284,10 @@ export default class GameScene extends Phaser.Scene {
 
     const w = this.worlds[worldKey];
     if (this.elapsed < w.frozenUntil) return; // frozen world ignores input
-    if (w.runner.jump()) audio.play('jump');
+    if (w.runner.jump()) {
+      audio.play('jump');
+      w.dust.explode(4, CFG.RUNNER_X, w.def.groundY);
+    }
   }
 
   update(time, delta) {
@@ -213,6 +303,7 @@ export default class GameScene extends Phaser.Scene {
       this.syncActive = false;
       this.syncText.setVisible(false);
       this.syncTween.pause();
+      this.divider.setFillStyle(0x888888);
       this.nextSyncAt = this.elapsed + this.rand(CFG.SYNC_MIN_MS, CFG.SYNC_MAX_MS);
     }
 
@@ -240,9 +331,23 @@ export default class GameScene extends Phaser.Scene {
     // Each active world contributes to the score; a frozen world does not.
     this.score += this.speed * dt * CFG.SCORE_RATE;
 
+    // Scenery: parallax layers, ground stripes, star twinkle
+    w.parallax.forEach((p) => {
+      p.obj.x -= this.speed * p.factor * dt;
+      if (p.obj.x < -p.halfW - 50) p.obj.x += CFG.WIDTH + (p.halfW + 50) * 2;
+    });
+    w.stripes.forEach((st) => {
+      st.x -= this.speed * dt;
+      if (st.x < -30) st.x += CFG.WIDTH + 60;
+    });
+    w.stars.forEach((s) => {
+      s.obj.alpha = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(this.elapsed / 300 + s.tw));
+    });
+
     if (!this.syncActive && this.elapsed >= w.nextSpawnAt) this.trySpawn(w);
 
-    w.runner.update(dt);
+    w.runner.update(dt, this.speed / CFG.MAX_SPEED);
+    if (w.runner.consumeLanded()) w.dust.explode(6, CFG.RUNNER_X, w.def.groundY);
     const hitbox = w.runner.getHitbox();
 
     for (let i = w.obstacles.length - 1; i >= 0; i--) {
@@ -264,6 +369,8 @@ export default class GameScene extends Phaser.Scene {
       const p = w.powerups[i];
       p.x -= this.speed * dt;
       p.gfx.x = p.x;
+      p.rays.rotation += dt * 2.5;
+      p.glow.alpha = 0.2 + 0.12 * Math.sin(this.elapsed / 120);
       if (p.x < -40) {
         p.gfx.destroy();
         w.powerups.splice(i, 1);
@@ -297,25 +404,39 @@ export default class GameScene extends Phaser.Scene {
     w.nextSpawnAt = this.elapsed + this.rand(CFG.SPAWN_GAP_MIN_MS, CFG.SPAWN_GAP_MAX_MS);
   }
 
+  // Distinct silhouettes (crates vs spikes) so obstacle types are
+  // readable by shape, not color.
   randomSpec() {
-    // Two distinct silhouettes (block vs spike) so obstacle types are
-    // readable by shape, not color.
-    return Math.random() < 0.5
-      ? { type: 'block', w: 34, h: Math.round(this.rand(36, 60)) }
-      : { type: 'spike', w: 40, h: 44 };
+    const r = Math.random();
+    if (r < 0.45) return { type: 'crate', w: 38, h: 38 };
+    if (r < 0.65) return { type: 'crate2', w: 38, h: 76 };
+    return { type: 'spikes', w: 50, h: 40 };
   }
 
   spawnObstacle(w, spec, x, arrival) {
-    const gy = w.def.groundY;
-    let gfx;
-    if (spec.type === 'block') {
-      gfx = this.add.rectangle(x, gy - spec.h / 2, spec.w, spec.h, w.def.ink).setDepth(3);
+    const def = w.def;
+    const parts = [];
+
+    const buildCrate = (cy) => {
+      parts.push(this.add.rectangle(0, cy, 38, 38, def.crate).setStrokeStyle(3, def.crateEdge));
+      parts.push(this.add.rectangle(0, cy, 44, 4, def.crateEdge).setRotation(0.785));
+      parts.push(this.add.rectangle(0, cy, 44, 4, def.crateEdge).setRotation(-0.785));
+    };
+
+    if (spec.type === 'crate') {
+      buildCrate(-19);
+    } else if (spec.type === 'crate2') {
+      buildCrate(-19);
+      buildCrate(-57);
     } else {
-      gfx = this.add
-        .triangle(x, gy - spec.h / 2, 0, spec.h, spec.w, spec.h, spec.w / 2, 0, w.def.ink)
-        .setDepth(3);
+      parts.push(this.add.rectangle(0, -7, 52, 10, def.crateEdge));
+      [-16, 0, 16].forEach((sx) => {
+        parts.push(this.add.triangle(sx, -25, 0, 30, 16, 30, 8, 0, def.spike));
+      });
     }
-    w.obstacles.push({ x, w: spec.w, h: spec.h, gy, arrival, gfx });
+
+    const gfx = this.add.container(x, def.groundY, parts).setDepth(3);
+    w.obstacles.push({ x, w: spec.w, h: spec.h, gy: def.groundY, arrival, gfx });
   }
 
   obstacleRect(o) {
@@ -339,6 +460,7 @@ export default class GameScene extends Phaser.Scene {
     this.syncUntil = arrival + 450;
     this.syncText.setVisible(true);
     this.syncTween.resume();
+    this.divider.setFillStyle(0xffd34d);
     audio.play('sync');
   }
 
@@ -349,8 +471,15 @@ export default class GameScene extends Phaser.Scene {
     const w = this.worlds[keys[Math.floor(Math.random() * keys.length)]];
     const x = CFG.WIDTH + 40;
     const y = w.def.groundY - 36;
-    const gfx = this.add.circle(x, y, 13, 0x59c2ff).setStrokeStyle(3, 0xffffff).setDepth(3);
-    w.powerups.push({ x, y, r: 13, gfx });
+
+    const glow = this.add.circle(0, 0, 19, 0x7fd4ff, 0.25);
+    const r1 = this.add.rectangle(0, 0, 32, 3, 0xbfe9ff, 0.9);
+    const r2 = this.add.rectangle(0, 0, 32, 3, 0xbfe9ff, 0.9).setRotation(Math.PI / 2);
+    const rays = this.add.container(0, 0, [r1, r2]);
+    const core = this.add.circle(0, 0, 11, 0x59c2ff).setStrokeStyle(2, 0xffffff);
+    const gfx = this.add.container(x, y, [glow, rays, core]).setDepth(3);
+
+    w.powerups.push({ x, y, r: 13, gfx, rays, glow });
   }
 
   freezeOtherWorld(collectorKey) {
