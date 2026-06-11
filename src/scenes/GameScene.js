@@ -59,15 +59,18 @@ export default class GameScene extends Phaser.Scene {
     const stars = [];
 
     if (def.key === 'light') {
-      // Sun with glow
-      this.add.circle(780, def.top + 62, 40, 0xffe2a8, 0.35).setDepth(0);
-      this.add.circle(780, def.top + 62, 26, 0xffd98a).setDepth(0);
+      this.createSun(780, def.top + 62);
       // Drifting clouds (slow parallax)
       for (let i = 0; i < 3; i++) {
         const cl = this.add
           .ellipse(120 + i * 340, def.top + 36 + Math.random() * 55, 95, 26, 0xffffff, 0.8)
           .setDepth(0);
         parallax.push({ obj: cl, factor: 0.12, halfW: 60 });
+      }
+      // Birds gliding by
+      for (let i = 0; i < 2; i++) {
+        const bird = this.makeBird(200 + i * 420, def.top + 55 + Math.random() * 45);
+        parallax.push({ obj: bird, factor: 0.18, halfW: 14 });
       }
       // Rolling hills
       for (let i = 0; i < 3; i++) {
@@ -82,9 +85,7 @@ export default class GameScene extends Phaser.Scene {
         parallax.push({ obj: t, factor: 0.5, halfW: 20 });
       }
     } else {
-      // Moon with glow
-      this.add.circle(200, def.top + 58, 34, 0xcfd8ff, 0.18).setDepth(0);
-      this.add.circle(200, def.top + 58, 20, 0xdfe6f0).setDepth(0);
+      this.createMoon(200, def.top + 58);
       // Twinkling stars
       for (let i = 0; i < 16; i++) {
         const s = this.add
@@ -92,13 +93,23 @@ export default class GameScene extends Phaser.Scene {
           .setDepth(0);
         stars.push({ obj: s, tw: Math.random() * Math.PI * 2 });
       }
-      // City skyline (far)
+      // City skyline (far) with randomly lit windows
       for (let i = 0; i < 7; i++) {
         const bw = 55 + Math.random() * 50;
         const bh = 60 + Math.random() * 75;
-        const b = this.add
-          .rectangle(i * 150, def.groundY - bh / 2 + 2, bw, bh, def.hill)
-          .setDepth(0);
+        const parts = [this.add.rectangle(0, 0, bw, bh, def.hill)];
+        const cols = Math.floor(bw / 18);
+        const rows = Math.floor(bh / 22);
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            if (Math.random() < 0.3) {
+              parts.push(
+                this.add.rectangle(c * 18 - bw / 2 + 12, r * 22 - bh / 2 + 13, 6, 8, 0xf7d774, 0.45)
+              );
+            }
+          }
+        }
+        const b = this.add.container(i * 150, def.groundY - bh / 2 + 2, parts).setDepth(0);
         parallax.push({ obj: b, factor: 0.25, halfW: bw / 2 });
       }
       // Antennas / rooftops (mid)
@@ -108,6 +119,15 @@ export default class GameScene extends Phaser.Scene {
           .setDepth(0);
         parallax.push({ obj: a, factor: 0.5, halfW: 6 });
       }
+      // Occasional shooting star
+      this.time.addEvent({
+        delay: 8000,
+        startAt: Math.random() * 6000,
+        loop: true,
+        callback: () => {
+          if (!this.isPaused && !this.isGameOver) this.spawnShootingStar(def);
+        },
+      });
     }
 
     // Ground with scrolling stripes for speed feel
@@ -196,6 +216,76 @@ export default class GameScene extends Phaser.Scene {
       freezeOverlay,
       freezeText,
     };
+  }
+
+  // Layered sun: soft outer glow with a breathing pulse, slowly rotating
+  // rays, warm core and an off-center hot spot for a spherical feel.
+  createSun(x, y) {
+    this.add.circle(x, y, 56, 0xffdf9e, 0.1).setDepth(0);
+    const glow = this.add.circle(x, y, 40, 0xffdf9e, 0.22).setDepth(0);
+    this.tweens.add({
+      targets: glow,
+      alpha: 0.34,
+      scale: 1.08,
+      duration: 1600,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    const rayParts = [];
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      rayParts.push(
+        this.add.rectangle(Math.cos(a) * 37, Math.sin(a) * 37, 13, 3, 0xffd98a, 0.55).setRotation(a)
+      );
+    }
+    const rays = this.add.container(x, y, rayParts).setDepth(0);
+    this.tweens.add({ targets: rays, rotation: Math.PI * 2, duration: 45000, repeat: -1 });
+    this.add.circle(x, y, 26, 0xffd98a).setDepth(0);
+    this.add.circle(x - 6, y - 6, 17, 0xfff3cf, 0.9).setDepth(0);
+  }
+
+  // Moon with a breathing halo, sphere shading and craters.
+  createMoon(x, y) {
+    this.add.circle(x, y, 40, 0xcfd8ff, 0.1).setDepth(0);
+    const halo = this.add.circle(x, y, 29, 0xcfd8ff, 0.16).setDepth(0);
+    this.tweens.add({
+      targets: halo,
+      alpha: 0.26,
+      duration: 2200,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    this.add.circle(x, y, 21, 0xe8edf8).setDepth(0);
+    this.add.circle(x + 5, y + 4, 16, 0xc7d1e8, 0.55).setDepth(0);
+    this.add.circle(x - 7, y - 4, 4, 0xb7c2db).setDepth(0);
+    this.add.circle(x + 4, y + 7, 3, 0xb7c2db).setDepth(0);
+    this.add.circle(x + 8, y - 6, 2.5, 0xb7c2db).setDepth(0);
+  }
+
+  // Tiny silhouette bird with flapping wings.
+  makeBird(x, y) {
+    const wl = this.add.rectangle(0, 0, 12, 2.5, 0x2f2f38).setOrigin(1, 0.5).setRotation(-0.4);
+    const wr = this.add.rectangle(0, 0, 12, 2.5, 0x2f2f38).setOrigin(0, 0.5).setRotation(0.4);
+    this.tweens.add({ targets: wl, rotation: 0.25, duration: 330, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: wr, rotation: -0.25, duration: 330, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    return this.add.container(x, y, [wl, wr]).setDepth(0);
+  }
+
+  spawnShootingStar(def) {
+    const sx = 250 + Math.random() * 600;
+    const sy = def.top + 15 + Math.random() * 70;
+    const streak = this.add.rectangle(sx, sy, 46, 2, 0xffffff, 0.85).setRotation(0.52).setDepth(0);
+    this.tweens.add({
+      targets: streak,
+      x: sx + 130,
+      y: sy + 75,
+      alpha: 0,
+      duration: 650,
+      ease: 'Cubic.easeOut',
+      onComplete: () => streak.destroy(),
+    });
   }
 
   createUi() {
