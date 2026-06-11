@@ -40,6 +40,8 @@ export const CFG = {
   COMBO_TIMEOUT_MS: 5000,
 
   BEST_KEY: 'shadow-runner-best',
+  COINS_KEY: 'shadow-runner-coins-total',
+  RUNS_KEY: 'shadow-runner-runs',
 };
 
 // Render at device-pixel resolution (capped at 2x) so shape-based art

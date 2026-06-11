@@ -36,6 +36,8 @@ export default class GameScene extends Phaser.Scene {
     this.combo = 0;
     this.lastCoinAt = -99999;
 
+    this.runFinished = false;
+
     // Revive (one per run)
     this.reviveUsed = false;
     this.reviveBusy = false;
@@ -968,7 +970,8 @@ export default class GameScene extends Phaser.Scene {
   }
 
   finishRun() {
-    if (this.isPaused === true && !this.isGameOver) return;
+    if (this.runFinished) return;
+    this.runFinished = true;
     this.clearRevivePrompt();
 
     const finalScore = Math.floor(this.score);
@@ -977,6 +980,13 @@ export default class GameScene extends Phaser.Scene {
       this.best = finalScore;
       localStorage.setItem(CFG.BEST_KEY, String(finalScore));
     }
+
+    // Lifetime stats for the home dashboard.
+    localStorage.setItem(CFG.RUNS_KEY, String(Number(localStorage.getItem(CFG.RUNS_KEY) || 0) + 1));
+    localStorage.setItem(
+      CFG.COINS_KEY,
+      String(Number(localStorage.getItem(CFG.COINS_KEY) || 0) + this.coins)
+    );
 
     this.time.delayedCall(200, () => {
       this.scene.start('GameOver', { score: finalScore, best: this.best, isNewBest });
