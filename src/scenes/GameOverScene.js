@@ -194,21 +194,20 @@ export default class GameOverScene extends Phaser.Scene {
       ease: 'Cubic.easeOut',
     });
 
-    // ── 8. PLAY AGAIN button ────────────────────────────────────
-    const btnY = 385;
-    const btnW = 180;
-    const btnH = 48;
-    const btnR = 12;
+    // ── 8. PLAY AGAIN and MENU buttons ──────────────────────────
+    const btnY = 380;
+    const btnW = 150;
+    const btnH = 42;
+    const btnR = 10;
 
-    // Subtle glow behind button
-    const btnGlow = this.add.graphics();
-    btnGlow.fillStyle(COLORS.GOLD_HEX, 0.15);
-    btnGlow.fillRoundedRect(-btnW / 2 - 6, -btnH / 2 - 6, btnW + 12, btnH + 12, btnR + 4);
-    btnGlow.setAlpha(0);
+    // --- PLAY AGAIN Button ---
+    const againGlow = this.add.graphics();
+    againGlow.fillStyle(COLORS.GOLD_HEX, 0.15);
+    againGlow.fillRoundedRect(-btnW / 2 - 5, -btnH / 2 - 5, btnW + 10, btnH + 10, btnR + 3);
+    againGlow.setAlpha(0);
 
-    // Pulsing glow
     this.tweens.add({
-      targets: btnGlow,
+      targets: againGlow,
       alpha: { from: 0.6, to: 1 },
       duration: 900,
       delay: 600,
@@ -217,51 +216,77 @@ export default class GameOverScene extends Phaser.Scene {
       ease: 'Sine.easeInOut',
     });
 
-    // Button fill
-    const btnBg = this.add.graphics();
-    btnBg.fillStyle(COLORS.GOLD_HEX, 1);
-    btnBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, btnR);
+    const againBg = this.add.graphics();
+    againBg.fillStyle(COLORS.GOLD_HEX, 1);
+    againBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, btnR);
 
-    // Button text
-    const btnText = this.add
+    const againText = this.add
       .text(0, 0, '▶  AGAIN', {
         fontFamily: FONTS.HEADING,
-        fontSize: '22px',
+        fontSize: '18px',
         color: '#1d1d24',
       })
       .setOrigin(0.5);
 
-    // Group the button elements in a container for unified scaling
-    const btnContainer = this.add.container(cx, btnY, [btnGlow, btnBg, btnText]).setDepth(6);
-    btnContainer.setScale(0);
+    const againContainer = this.add.container(cx - 90, btnY, [againGlow, againBg, againText]).setDepth(6);
+    againContainer.setScale(0);
 
-    // Bounce entrance
+    const againHitZone = this.add
+      .rectangle(cx - 90, btnY, btnW, btnH)
+      .setOrigin(0.5)
+      .setDepth(8)
+      .setAlpha(0.001)
+      .setInteractive({ useHandCursor: true });
+
+    againHitZone.on('pointerdown', (pointer, localX, localY, event) => {
+      event.stopPropagation();
+      this.scene.start('Game');
+    });
+
+    // --- MENU Button ---
+    const menuBg = this.add.graphics();
+    menuBg.fillStyle(0x0a0a14, 0.6);
+    menuBg.fillRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, btnR);
+    menuBg.lineStyle(1.5, COLORS.GOLD_HEX, 0.5);
+    menuBg.strokeRoundedRect(-btnW / 2, -btnH / 2, btnW, btnH, btnR);
+
+    const menuText = this.add
+      .text(0, 0, '🏠  MENU', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '18px',
+        color: COLORS.GOLD,
+      })
+      .setOrigin(0.5);
+
+    const menuContainer = this.add.container(cx + 90, btnY, [menuBg, menuText]).setDepth(6);
+    menuContainer.setScale(0);
+
+    const menuHitZone = this.add
+      .rectangle(cx + 90, btnY, btnW, btnH)
+      .setOrigin(0.5)
+      .setDepth(8)
+      .setAlpha(0.001)
+      .setInteractive({ useHandCursor: true });
+
+    menuHitZone.on('pointerdown', (pointer, localX, localY, event) => {
+      event.stopPropagation();
+      this.scene.start('Menu');
+    });
+
+    // Bounce entrance for both
     this.tweens.add({
-      targets: btnContainer,
+      targets: [againContainer, menuContainer],
       scale: 1,
       duration: 500,
       delay: 550,
       ease: 'Bounce.easeOut',
     });
 
-    // Hitbox for button interaction
-    const btnHitZone = this.add
-      .rectangle(cx, btnY, btnW, btnH)
-      .setOrigin(0.5)
-      .setDepth(8)
-      .setAlpha(0.001)
-      .setInteractive({ useHandCursor: true });
-
-    btnHitZone.on('pointerdown', (pointer, localX, localY, event) => {
-      event.stopPropagation();
-      this.scene.start('Game');
-    });
-
     // ── 9. Sub-text ─────────────────────────────────────────────
     const subText = this.add
-      .text(cx, 420, 'or press any key', {
+      .text(cx, 420, 'press SPACE to restart or ESC for menu', {
         fontFamily: FONTS.MONO,
-        fontSize: '11px',
+        fontSize: '10px',
         color: COLORS.TEXT_MUTED,
       })
       .setOrigin(0.5)
@@ -279,8 +304,9 @@ export default class GameOverScene extends Phaser.Scene {
 
     // ── 10. Input handling ──────────────────────────────────────
     this.time.delayedCall(300, () => {
-      this.input.keyboard.once('keydown', () => this.scene.start('Game'));
-      this.input.once('pointerdown', () => this.scene.start('Game'));
+      this.input.keyboard.on('keydown-SPACE', () => this.scene.start('Game'));
+      this.input.keyboard.on('keydown-ENTER', () => this.scene.start('Game'));
+      this.input.keyboard.on('keydown-ESC', () => this.scene.start('Menu'));
     });
 
     // ── 11. HiDPI ───────────────────────────────────────────────
