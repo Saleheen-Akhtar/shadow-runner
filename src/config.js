@@ -122,18 +122,28 @@ function decrypt(cipher) {
   }
 }
 
+function getStorageBackend() {
+  if (typeof window !== 'undefined' && window.CrazyGames && window.CrazyGames.SDK && window.CrazyGames.SDK.data) {
+    return window.CrazyGames.SDK.data;
+  }
+  return localStorage;
+}
+
 export const secureStorage = {
   getItem(key) {
-    const val = localStorage.getItem(key);
+    const backend = getStorageBackend();
+    const val = backend.getItem(key);
     if (val === null) return null;
     const decrypted = decrypt(val);
     return decrypted !== null ? decrypted : val;
   },
   setItem(key, val) {
-    localStorage.setItem(key, encrypt(val));
+    const backend = getStorageBackend();
+    backend.setItem(key, encrypt(val));
   },
   removeItem(key) {
-    localStorage.removeItem(key);
+    const backend = getStorageBackend();
+    backend.removeItem(key);
   }
 };
 
