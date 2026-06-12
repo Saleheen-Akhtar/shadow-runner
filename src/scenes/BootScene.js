@@ -6,6 +6,20 @@ export default class BootScene extends Phaser.Scene {
     super('Boot');
   }
 
+  preload() {
+    this.load.audio('jump', 'assets/audio/jump.wav');
+    this.load.audio('doublejump', 'assets/audio/doublejump.wav');
+    this.load.audio('slide', 'assets/audio/slide.mp3');
+    this.load.audio('dash', 'assets/audio/dash.mp3');
+    this.load.audio('coin', 'assets/audio/coin.mp3');
+    this.load.audio('hit', 'assets/audio/hit.wav');
+    this.load.audio('sync', 'assets/audio/sync.wav');
+    this.load.audio('drone', 'assets/audio/drone.wav');
+    this.load.audio('boost', 'assets/audio/boost.mp3');
+    this.load.audio('crumble', 'assets/audio/crumble.wav');
+    this.load.audio('freeze', 'assets/audio/freeze.wav');
+  }
+
   create() {
     // Generate a tiny white dot texture used by particle emitters.
     const g = this.make.graphics({ x: 0, y: 0, add: false });
