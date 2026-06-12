@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CFG, DPR, WORLDS, getSelectedSkin, FONTS, COLORS, getDailyChallenge, CHALLENGE_UNLOCKED_KEY } from '../config.js';
+import { CFG, DPR, WORLDS, getSelectedSkin, FONTS, COLORS, getDailyChallenge, CHALLENGE_UNLOCKED_KEY, secureStorage } from '../config.js';
 import Runner from '../entities/Runner.js';
 import audio from '../systems/AudioManager.js';
 import portal from '../platform/PortalAdapter.js';
@@ -14,7 +14,7 @@ export default class GameScene extends Phaser.Scene {
     this.skin = getSelectedSkin();
     this.elapsed = 0;
     this.score = 0;
-    this.best = Number(localStorage.getItem(CFG.BEST_KEY) || 0);
+    this.best = Number(secureStorage.getItem(CFG.BEST_KEY) || 0);
     this.speed = CFG.BASE_SPEED;
     this.isPaused = false;
     this.isGameOver = false;
@@ -52,7 +52,7 @@ export default class GameScene extends Phaser.Scene {
     this.invulnUntil = 0;
 
     // Check if we are restoring from a saved revive state (in case the ad SDK reloaded the scene)
-    const savedRevive = localStorage.getItem('shadow-runner-revive-state');
+    const savedRevive = secureStorage.getItem('shadow-runner-revive-state');
     if (savedRevive) {
       try {
         const state = JSON.parse(savedRevive);
@@ -85,9 +85,9 @@ export default class GameScene extends Phaser.Scene {
 
         this.invulnUntil = this.elapsed + 2000;
         this.stopSync();
-        localStorage.removeItem('shadow-runner-revive-state');
+        secureStorage.removeItem('shadow-runner-revive-state');
       } catch (e) {
-        localStorage.removeItem('shadow-runner-revive-state');
+        secureStorage.removeItem('shadow-runner-revive-state');
       }
     }
 
@@ -2175,21 +2175,21 @@ export default class GameScene extends Phaser.Scene {
       elapsed: this.elapsed,
       coins: this.coins,
     };
-    localStorage.setItem('shadow-runner-revive-state', JSON.stringify(reviveState));
+    secureStorage.setItem('shadow-runner-revive-state', JSON.stringify(reviveState));
 
     portal.rewardedAd().then((ok) => {
       this.reviveBusy = false;
       if (ok !== false) {
         this.doRevive();
       } else {
-        localStorage.removeItem('shadow-runner-revive-state');
+        secureStorage.removeItem('shadow-runner-revive-state');
         this.finishRun();
       }
     });
   }
 
   doRevive() {
-    localStorage.removeItem('shadow-runner-revive-state');
+    secureStorage.removeItem('shadow-runner-revive-state');
     this.clearRevivePrompt();
     this.reviveUsed = true;
 
@@ -2280,14 +2280,14 @@ export default class GameScene extends Phaser.Scene {
     const isNewBest = finalScore > this.best;
     if (isNewBest) {
       this.best = finalScore;
-      localStorage.setItem(CFG.BEST_KEY, String(finalScore));
+      secureStorage.setItem(CFG.BEST_KEY, String(finalScore));
     }
 
     // Lifetime stats for the home dashboard.
-    localStorage.setItem(CFG.RUNS_KEY, String(Number(localStorage.getItem(CFG.RUNS_KEY) || 0) + 1));
-    localStorage.setItem(
+    secureStorage.setItem(CFG.RUNS_KEY, String(Number(secureStorage.getItem(CFG.RUNS_KEY) || 0) + 1));
+    secureStorage.setItem(
       CFG.COINS_KEY,
-      String(Number(localStorage.getItem(CFG.COINS_KEY) || 0) + this.coins)
+      String(Number(secureStorage.getItem(CFG.COINS_KEY) || 0) + this.coins)
     );
 
     // Update Daily Challenge
@@ -2301,12 +2301,12 @@ export default class GameScene extends Phaser.Scene {
       currentVal = this.runSlides;
     }
 
-    const currentProgress = Number(localStorage.getItem(`challenge-progress-${challenge.dayString}`) || 0);
+    const currentProgress = Number(secureStorage.getItem(`challenge-progress-${challenge.dayString}`) || 0);
     const newProgress = Math.min(challenge.target, currentProgress + currentVal);
-    localStorage.setItem(`challenge-progress-${challenge.dayString}`, String(newProgress));
+    secureStorage.setItem(`challenge-progress-${challenge.dayString}`, String(newProgress));
 
     if (newProgress >= challenge.target) {
-      localStorage.setItem(CHALLENGE_UNLOCKED_KEY, 'true');
+      secureStorage.setItem(CHALLENGE_UNLOCKED_KEY, 'true');
     }
 
     this.time.delayedCall(100, () => {

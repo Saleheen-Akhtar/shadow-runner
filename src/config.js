@@ -97,8 +97,48 @@ export const TRAILS = [
 export const TRAIL_KEY = 'shadow-runner-trail';
 export const PURCHASED_TRAILS_KEY = 'shadow-runner-purchased-trails';
 
+const SECRET_KEY = 'shadow_runner_salt_value';
+
+function encrypt(val) {
+  const str = String(val);
+  let result = '';
+  for (let i = 0; i < str.length; i++) {
+    result += String.fromCharCode(str.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
+  }
+  return btoa(result);
+}
+
+function decrypt(cipher) {
+  if (!cipher) return null;
+  try {
+    const raw = atob(cipher);
+    let result = '';
+    for (let i = 0; i < raw.length; i++) {
+      result += String.fromCharCode(raw.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
+    }
+    return result;
+  } catch (e) {
+    return null;
+  }
+}
+
+export const secureStorage = {
+  getItem(key) {
+    const val = localStorage.getItem(key);
+    if (val === null) return null;
+    const decrypted = decrypt(val);
+    return decrypted !== null ? decrypted : val;
+  },
+  setItem(key, val) {
+    localStorage.setItem(key, encrypt(val));
+  },
+  removeItem(key) {
+    localStorage.removeItem(key);
+  }
+};
+
 export function getSelectedSkin() {
-  const i = Number(localStorage.getItem(SKIN_KEY) || 0);
+  const i = Number(secureStorage.getItem(SKIN_KEY) || 0);
   return SKINS[Math.min(Math.max(i, 0), SKINS.length - 1)];
 }
 
@@ -108,7 +148,7 @@ export function isSkinUnlocked(index) {
   if (!skin) return false;
   
   // Check best score milestone
-  const bestScore = Number(localStorage.getItem(CFG.BEST_KEY) || 0);
+  const bestScore = Number(secureStorage.getItem(CFG.BEST_KEY) || 0);
   if (typeof skin.unlock === 'number' && bestScore >= skin.unlock) {
     return true;
   }
@@ -120,7 +160,7 @@ export function isSkinUnlocked(index) {
   
   // Check purchased skins
   try {
-    const purchased = JSON.parse(localStorage.getItem(PURCHASED_SKINS_KEY) || '[]');
+    const purchased = JSON.parse(secureStorage.getItem(PURCHASED_SKINS_KEY) || '[]');
     if (purchased.includes(skin.name)) {
       return true;
     }
@@ -133,7 +173,7 @@ export function isSkinUnlocked(index) {
 
 export function getPurchasedTrails() {
   try {
-    const purchased = JSON.parse(localStorage.getItem(PURCHASED_TRAILS_KEY) || '[]');
+    const purchased = JSON.parse(secureStorage.getItem(PURCHASED_TRAILS_KEY) || '[]');
     if (!purchased.includes('NEON')) {
       purchased.unshift('NEON');
     }
@@ -144,7 +184,7 @@ export function getPurchasedTrails() {
 }
 
 export function getSelectedTrail() {
-  return localStorage.getItem(TRAIL_KEY) || 'NEON';
+  return secureStorage.getItem(TRAIL_KEY) || 'NEON';
 }
 
 // The two stacked worlds. Readability relies on luminance contrast and
@@ -199,7 +239,7 @@ export const WORLDS = {
 };
 
 export function checkChallengeSkinUnlocked() {
-  return localStorage.getItem(CHALLENGE_UNLOCKED_KEY) === 'true';
+  return secureStorage.getItem(CHALLENGE_UNLOCKED_KEY) === 'true';
 }
 
 export function getDailyChallenge() {

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CFG, WORLDS, SKINS, SKIN_KEY, getSelectedSkin, FONTS, COLORS, checkChallengeSkinUnlocked, getDailyChallenge, isSkinUnlocked, getPurchasedTrails, getSelectedTrail, TRAILS, TRAIL_KEY, PURCHASED_TRAILS_KEY, PURCHASED_SKINS_KEY } from '../config.js';
+import { CFG, WORLDS, SKINS, SKIN_KEY, getSelectedSkin, FONTS, COLORS, checkChallengeSkinUnlocked, getDailyChallenge, isSkinUnlocked, getPurchasedTrails, getSelectedTrail, TRAILS, TRAIL_KEY, PURCHASED_TRAILS_KEY, PURCHASED_SKINS_KEY, secureStorage } from '../config.js';
 import Runner from '../entities/Runner.js';
 import audio from '../systems/AudioManager.js';
 import { applyHiDpi, fadeTransition, drawGlassPanel } from '../systems/display.js';
@@ -130,9 +130,9 @@ export default class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: tagline, alpha: 1, duration: 400, delay: 350 });
 
     // ── Stats row — glassmorphic cards ─────────────────────────
-    const best = Number(localStorage.getItem(CFG.BEST_KEY) || 0);
-    const totalCoins = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
-    const runs = Number(localStorage.getItem(CFG.RUNS_KEY) || 0);
+    const best = Number(secureStorage.getItem(CFG.BEST_KEY) || 0);
+    const totalCoins = Number(secureStorage.getItem(CFG.COINS_KEY) || 0);
+    const runs = Number(secureStorage.getItem(CFG.RUNS_KEY) || 0);
 
     const stats = [
       { icon: '\uD83C\uDFC6', label: 'BEST', value: best, x: cx - 140 },
@@ -376,7 +376,7 @@ export default class MenuScene extends Phaser.Scene {
   // Row of skin swatches with golden selection ring.
   buildSkinPicker(cx, y, best) {
     const selIdx = Math.min(
-      Math.max(Number(localStorage.getItem(SKIN_KEY) || 0), 0),
+      Math.max(Number(secureStorage.getItem(SKIN_KEY) || 0), 0),
       SKINS.length - 1
     );
 
@@ -421,7 +421,7 @@ export default class MenuScene extends Phaser.Scene {
         if (swatch.input) swatch.input.cursor = 'pointer';
         swatch.on('pointerdown', (pointer, lx, ly, event) => {
           event.stopPropagation();
-          localStorage.setItem(SKIN_KEY, String(i));
+          secureStorage.setItem(SKIN_KEY, String(i));
           this.scene.restart();
         });
       } else {
@@ -563,7 +563,7 @@ export default class MenuScene extends Phaser.Scene {
     }).setDepth(62);
     this.shopObjs.push(title);
 
-    const coinsCount = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
+    const coinsCount = Number(secureStorage.getItem(CFG.COINS_KEY) || 0);
     const coinsLabel = this.add.text(cx + 250, 68, `\u25CF ${coinsCount} COINS`, {
       fontFamily: FONTS.MONO,
       fontSize: '14px',
@@ -647,7 +647,7 @@ export default class MenuScene extends Phaser.Scene {
         this.shopObjs.push(previewG);
 
         const unlocked = isSkinUnlocked(index);
-        const selectedSkinIdx = Number(localStorage.getItem(SKIN_KEY) || 0);
+        const selectedSkinIdx = Number(secureStorage.getItem(SKIN_KEY) || 0);
         const isEquipped = (selectedSkinIdx === index);
 
         if (isEquipped) {
@@ -671,7 +671,7 @@ export default class MenuScene extends Phaser.Scene {
           if (equipBtn.input) equipBtn.input.cursor = 'pointer';
           equipBtn.on('pointerdown', (pointer, lx, ly, event) => {
             event.stopPropagation();
-            localStorage.setItem(SKIN_KEY, String(index));
+            secureStorage.setItem(SKIN_KEY, String(index));
             this.updateLiveRunners();
             this.renderShop();
           });
@@ -707,20 +707,20 @@ export default class MenuScene extends Phaser.Scene {
             if (buyHit.input) buyHit.input.cursor = 'pointer';
             buyHit.on('pointerdown', (pointer, lx, ly, event) => {
               event.stopPropagation();
-              const currentCoins = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
+              const currentCoins = Number(secureStorage.getItem(CFG.COINS_KEY) || 0);
               if (currentCoins >= skin.cost) {
-                localStorage.setItem(CFG.COINS_KEY, String(currentCoins - skin.cost));
+                secureStorage.setItem(CFG.COINS_KEY, String(currentCoins - skin.cost));
 
                 let purchased = [];
                 try {
-                  purchased = JSON.parse(localStorage.getItem(PURCHASED_SKINS_KEY) || '[]');
+                  purchased = JSON.parse(secureStorage.getItem(PURCHASED_SKINS_KEY) || '[]');
                 } catch (e) {}
                 if (!purchased.includes(skin.name)) {
                   purchased.push(skin.name);
                 }
-                localStorage.setItem(PURCHASED_SKINS_KEY, JSON.stringify(purchased));
+                secureStorage.setItem(PURCHASED_SKINS_KEY, JSON.stringify(purchased));
 
-                localStorage.setItem(SKIN_KEY, String(index));
+                secureStorage.setItem(SKIN_KEY, String(index));
                 this.updateLiveRunners();
                 this.renderShop();
               }
@@ -803,7 +803,7 @@ export default class MenuScene extends Phaser.Scene {
           if (equipBtn.input) equipBtn.input.cursor = 'pointer';
           equipBtn.on('pointerdown', (pointer, lx, ly, event) => {
             event.stopPropagation();
-            localStorage.setItem(TRAIL_KEY, trail.name);
+            secureStorage.setItem(TRAIL_KEY, trail.name);
             this.updateLiveRunners();
             this.renderShop();
           });
@@ -831,20 +831,20 @@ export default class MenuScene extends Phaser.Scene {
             if (buyHit.input) buyHit.input.cursor = 'pointer';
             buyHit.on('pointerdown', (pointer, lx, ly, event) => {
               event.stopPropagation();
-              const currentCoins = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
+              const currentCoins = Number(secureStorage.getItem(CFG.COINS_KEY) || 0);
               if (currentCoins >= trail.cost) {
-                localStorage.setItem(CFG.COINS_KEY, String(currentCoins - trail.cost));
+                secureStorage.setItem(CFG.COINS_KEY, String(currentCoins - trail.cost));
 
                 let purchased = [];
                 try {
-                  purchased = JSON.parse(localStorage.getItem(PURCHASED_TRAILS_KEY) || '[]');
+                  purchased = JSON.parse(secureStorage.getItem(PURCHASED_TRAILS_KEY) || '[]');
                 } catch (e) {}
                 if (!purchased.includes(trail.name)) {
                   purchased.push(trail.name);
                 }
-                localStorage.setItem(PURCHASED_TRAILS_KEY, JSON.stringify(purchased));
+                secureStorage.setItem(PURCHASED_TRAILS_KEY, JSON.stringify(purchased));
 
-                localStorage.setItem(TRAIL_KEY, trail.name);
+                secureStorage.setItem(TRAIL_KEY, trail.name);
                 this.updateLiveRunners();
                 this.renderShop();
               }
@@ -866,7 +866,7 @@ export default class MenuScene extends Phaser.Scene {
   buildDailyChallengeHUD(cx, y) {
     const challenge = getDailyChallenge();
     const isCompleted = checkChallengeSkinUnlocked();
-    const progress = Number(localStorage.getItem(`challenge-progress-${challenge.dayString}`) || 0);
+    const progress = Number(secureStorage.getItem(`challenge-progress-${challenge.dayString}`) || 0);
 
     // Glass panel for daily challenge (compact, top-right)
     const panelW = 225;
