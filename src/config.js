@@ -48,7 +48,30 @@ export const CFG = {
 // stays crisp when the canvas is scaled up to fill the screen.
 export const DPR = Math.min(Math.max(window.devicePixelRatio || 1, 1), 2);
 
-// Character skins, unlocked when the player's BEST score reaches
+// Premium typography — loaded via Google Fonts in index.html.
+export const FONTS = {
+  HEADING: '"Outfit", "Arial Black", sans-serif',
+  MONO: '"JetBrains Mono", monospace',
+};
+
+// Curated accent palette shared across all UI.
+export const COLORS = {
+  GOLD: '#FFD34D',
+  GOLD_HEX: 0xFFD34D,
+  GOLD_DARK: '#B8962A',
+  GOLD_DARK_HEX: 0xB8962A,
+  CYAN: '#59C2FF',
+  CYAN_HEX: 0x59C2FF,
+  RED: '#FF5A5A',
+  RED_HEX: 0xFF5A5A,
+  TEXT_PRIMARY: '#F2F0E8',
+  TEXT_SECONDARY: '#8A8A9A',
+  TEXT_MUTED: '#5A5A6A',
+  PANEL_BG: 0x0A0A14,
+  PANEL_ALPHA: 0.85,
+};
+
+  // Character skins, unlocked when the player's BEST score reaches
 // `unlock`. Each skin defines runner colors per world.
 export const SKINS = [
   { name: 'CLASSIC', unlock: 0, light: { body: 0x23233a, accent: 0xff5a5a }, dark: { body: 0xe9e7f4, accent: 0x59c2ff } },
@@ -56,9 +79,11 @@ export const SKINS = [
   { name: 'TOXIC', unlock: 1000, light: { body: 0x1f4d2e, accent: 0x9dff57 }, dark: { body: 0xddffe2, accent: 0x2fe07a } },
   { name: 'ROYAL', unlock: 2500, light: { body: 0x3a2a6b, accent: 0xffd34d }, dark: { body: 0xe6dcff, accent: 0xb98aff } },
   { name: 'VOID', unlock: 5000, light: { body: 0x101014, accent: 0xff2fa0 }, dark: { body: 0xffffff, accent: 0x00e8ff } },
+  { name: 'CYBER', unlock: 'CHALLENGE', light: { body: 0x0a2b25, accent: 0x00ffcc }, dark: { body: 0x2e0a24, accent: 0xff00aa } },
 ];
 
 export const SKIN_KEY = 'shadow-runner-skin';
+export const CHALLENGE_UNLOCKED_KEY = 'shadow-runner-challenge-unlocked';
 
 export function getSelectedSkin() {
   const i = Number(localStorage.getItem(SKIN_KEY) || 0);
@@ -115,3 +140,33 @@ export const WORLDS = {
     dust: 0x42425f,
   },
 };
+
+export function checkChallengeSkinUnlocked() {
+  return localStorage.getItem(CHALLENGE_UNLOCKED_KEY) === 'true';
+}
+
+export function getDailyChallenge() {
+  const now = new Date();
+  const dayString = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+  const dayIndex = now.getDate() % 3; // 0, 1, or 2
+
+  let type = '';
+  let target = 0;
+  let text = '';
+
+  if (dayIndex === 0) {
+    type = 'coins';
+    target = 50;
+    text = `Daily Challenge: Collect ${target} coins in one run`;
+  } else if (dayIndex === 1) {
+    type = 'jumps';
+    target = 25;
+    text = `Daily Challenge: Jump ${target} times in one run`;
+  } else {
+    type = 'slides';
+    target = 15;
+    text = `Daily Challenge: Slide ${target} times in one run`;
+  }
+
+  return { type, target, text, dayString };
+}

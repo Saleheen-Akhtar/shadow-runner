@@ -14,6 +14,36 @@ export default class BootScene extends Phaser.Scene {
     g.generateTexture('dot', 8, 8);
     g.destroy();
 
-    portal.init().finally(() => this.scene.start('Menu'));
+    // Soft radial glow texture for ambient particles and highlights.
+    const glow = this.make.graphics({ x: 0, y: 0, add: false });
+    glow.fillStyle(0xffffff, 1);
+    glow.fillCircle(32, 32, 32);
+    glow.fillStyle(0xffffff, 0.6);
+    glow.fillCircle(32, 32, 20);
+    glow.fillStyle(0xffffff, 0.3);
+    glow.fillCircle(32, 32, 10);
+    glow.generateTexture('glow', 64, 64);
+    glow.destroy();
+
+    // Small diamond spark for celebrations and fireworks.
+    const spark = this.make.graphics({ x: 0, y: 0, add: false });
+    spark.fillStyle(0xffffff, 1);
+    spark.fillTriangle(8, 0, 16, 8, 8, 16);
+    spark.fillTriangle(8, 0, 0, 8, 8, 16);
+    spark.generateTexture('spark', 16, 16);
+    spark.destroy();
+
+    // Remove the CSS loading screen.
+    const loader = document.getElementById('loader');
+    if (loader) {
+      loader.style.transition = 'opacity 0.3s';
+      loader.style.opacity = '0';
+      setTimeout(() => loader.remove(), 300);
+    }
+
+    portal.init().finally(() => {
+      // Fade-in handled by MenuScene itself.
+      this.scene.start('Menu');
+    });
   }
 }

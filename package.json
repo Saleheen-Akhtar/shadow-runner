@@ -9,7 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "howler": "^2.2.4",
     "phaser": "^3.80.1"
   },
   "devDependencies": {

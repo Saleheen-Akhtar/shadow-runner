@@ -8,7 +8,7 @@ import GameOverScene from './scenes/GameOverScene.js';
 // The canvas backing store is DPR times larger than the 960x540 design
 // space; each scene zooms its camera by DPR (see applyHiDpi) so all game
 // logic keeps using design-space coordinates while rendering stays sharp.
-new Phaser.Game({
+window.phaserGame = new Phaser.Game({
   type: Phaser.AUTO,
   parent: 'game',
   width: CFG.WIDTH * DPR,

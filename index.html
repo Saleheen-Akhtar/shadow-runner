@@ -4,12 +4,36 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <title>Shadow Runner</title>
+    <meta name="description" content="Two worlds. Two runners. One mistake ends both. An addictive dual-world endless runner." />
+
+    <!-- Premium typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@700;900&display=swap" rel="stylesheet" />
+
     <style>
-      html, body { margin: 0; padding: 0; background: #000; height: 100%; overflow: hidden; }
+      html, body { margin: 0; padding: 0; background: #0a0a14; height: 100%; overflow: hidden; }
       #game { width: 100%; height: 100%; }
+
+      /* Loading screen removed by BootScene once Phaser is ready. */
+      #loader {
+        position: fixed; inset: 0; z-index: 9999;
+        display: flex; align-items: center; justify-content: center;
+        background: #0a0a14;
+      }
+      #loader .dot {
+        width: 14px; height: 14px; border-radius: 50%;
+        background: #FFD34D;
+        animation: pulse 1s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.5; }
+        50% { transform: scale(1.6); opacity: 1; }
+      }
     </style>
   </head>
   <body>
+    <div id="loader"><div class="dot"></div></div>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

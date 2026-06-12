@@ -2,12 +2,11 @@ import Phaser from 'phaser';
 import { CFG } from '../config.js';
 
 // An animated humanoid runner built from primitives: head with eye,
-// torso, two arms and two legs with a procedural run cycle, an air pose
-// while jumping, a crouched slide pose, squash & stretch, an after-image
-// trail and a soft drop shadow. Movement is implied by the world
-// scrolling; the runner only handles vertical physics.
+// torso, two arms, two legs, a flowing headband tail, and a skin-specific
+// particle trail emitter. Handles speed lean, dynamic squash & stretch
+// and procedural jog animations.
 export default class Runner {
-  constructor(scene, x, groundY, bodyColor, accentColor, eyeColor = 0xffffff) {
+  constructor(scene, x, groundY, bodyColor, accentColor, eyeColor = 0xffffff, skinName = 'CLASSIC') {
     this.scene = scene;
     this.x = x;
     this.groundY = groundY;
@@ -17,14 +16,23 @@ export default class Runner {
     this.sliding = false;
     this.slideTimer = null;
     this.phase = Math.random() * Math.PI * 2;
-    this.ghostTimer = 0;
     this.bodyColor = bodyColor;
     this.accentColor = accentColor;
+    this.skinName = skinName;
     this._landed = false;
 
     this.shadow = scene.add.ellipse(x, groundY + 5, 42, 10, 0x000000, 0.25).setDepth(2);
 
     const c = bodyColor;
+
+    // Ribbon tail segments (flowing back from the headband)
+    this.tailSegments = [];
+    const segmentCount = 4;
+    for (let i = 0; i < segmentCount; i++) {
+      const seg = scene.add.rectangle(-6 - i * 4.5, -52, 6 - i * 0.8, 3.5 - i * 0.5, accentColor).setOrigin(0.5);
+      this.tailSegments.push(seg);
+    }
+
     // Limbs pivot from their top edge (shoulder / hip).
     this.armB = scene.add.rectangle(2, -42, 5, 19, c).setOrigin(0.5, 0.05);
     this.legB = scene.add.rectangle(1, -22, 6, 23, c).setOrigin(0.5, 0.05);
@@ -37,6 +45,7 @@ export default class Runner {
 
     this.container = scene.add
       .container(x, groundY, [
+        ...this.tailSegments,
         this.armB,
         this.legB,
         this.torso,
@@ -47,22 +56,63 @@ export default class Runner {
         this.eye,
       ])
       .setDepth(4);
+
+    // Create particle trail emitter following the container
+    const emitterConfig = this.getTrailConfig(skinName, accentColor);
+    this.trailEmitter = scene.add.particles(0, 0, emitterConfig.texture, emitterConfig).setDepth(3);
+    this.trailEmitter.startFollow(this.container, -10, -28);
+
+    this.jumpCount = 0;
+    this.dashing = false;
+    this.dashTime = 0;
   }
 
   jump() {
-    if (!this.onGround) return false;
+    if (this.onGround) {
+      if (this.sliding) this.endSlide();
+      this.vy = this.scene.jumpVelocity || CFG.JUMP_VELOCITY;
+      this.onGround = false;
+      this.jumpCount = 1;
+      // Stretch on take-off.
+      this.scene.tweens.add({
+        targets: this.container,
+        scaleX: 0.88,
+        scaleY: 1.12,
+        duration: 90,
+        yoyo: true,
+        onComplete: () => this.container.setScale(1),
+      });
+      return true;
+    } else if (this.jumpCount < 2) {
+      this.vy = (this.scene.jumpVelocity || CFG.JUMP_VELOCITY) * 0.85;
+      this.jumpCount = 2;
+      this.scene.tweens.add({
+        targets: this.container,
+        scaleX: 0.88,
+        scaleY: 1.12,
+        duration: 90,
+        yoyo: true,
+        onComplete: () => this.container.setScale(1),
+      });
+      return true;
+    }
+    return false;
+  }
+
+  dash() {
+    if (this.dashing) return false;
     if (this.sliding) this.endSlide();
-    this.vy = CFG.JUMP_VELOCITY;
-    this.onGround = false;
-    // Stretch on take-off.
+    this.dashing = true;
+    this.dashTime = this.scene.time.now;
     this.scene.tweens.add({
       targets: this.container,
-      scaleX: 0.88,
-      scaleY: 1.12,
-      duration: 90,
+      scaleX: 1.3,
+      scaleY: 0.8,
+      duration: 80,
       yoyo: true,
       onComplete: () => this.container.setScale(1),
     });
+    this.scene.dust.explode(8, this.container.x, this.container.y - 12);
     return true;
   }
 
@@ -98,20 +148,15 @@ export default class Runner {
         this.armF.rotation = 0.9;
         this.armB.rotation = 1.1;
         this.container.y = this.y;
-        this.ghostTimer += dt;
-        if (this.ghostTimer > 0.06) {
-          this.ghostTimer = 0;
-          const d = this.scene.add
-            .ellipse(this.x - 14, this.y - 6, 14, 8, this.bodyColor, 0.18)
-            .setDepth(3);
-          this.scene.tweens.add({
-            targets: d,
-            alpha: 0,
-            x: d.x - 24,
-            duration: 240,
-            onComplete: () => d.destroy(),
-          });
-        }
+
+        // Keep head/torso aligned during slide
+        this.torso.rotation = 0;
+        this.head.rotation = 0;
+        this.band.rotation = 0;
+        this.eye.rotation = 0;
+        this.head.x = 1;
+        this.band.x = 1;
+        this.eye.x = 4.5;
       } else {
         // Run cycle: limbs swing in opposite phase, body bobs slightly.
         this.phase += dt * (9 + speedNorm * 7);
@@ -121,34 +166,57 @@ export default class Runner {
         this.armF.rotation = -s * 0.95;
         this.armB.rotation = s * 0.95;
         this.container.y = this.y - Math.abs(Math.cos(this.phase)) * 2.5;
+
+        // Keep head/torso aligned during run
+        this.torso.rotation = 0;
+        this.head.rotation = 0;
+        this.band.rotation = 0;
+        this.eye.rotation = 0;
+        this.head.x = 1;
+        this.band.x = 1;
+        this.eye.x = 4.5;
       }
     } else {
-      this.vy += CFG.GRAVITY * dt;
+      this.vy += (this.scene.gravity || CFG.GRAVITY) * dt;
       this.y += this.vy * dt;
+
       // Air pose: front leg forward, arms raised.
       this.legF.rotation = 0.75;
       this.legB.rotation = -0.55;
       this.armF.rotation = -1.1;
       this.armB.rotation = 0.7;
 
-      // After-image trail while airborne.
-      this.ghostTimer += dt;
-      if (this.ghostTimer > 0.07) {
-        this.ghostTimer = 0;
-        this.spawnGhost();
-      }
+      // Keep head/torso aligned while airborne
+      this.torso.rotation = 0;
+      this.head.rotation = 0;
+      this.band.rotation = 0;
+      this.eye.rotation = 0;
+      this.head.x = 1;
+      this.band.x = 1;
+      this.eye.x = 4.5;
+
+      // Vertical stretch based on velocity
+      const stretchY = 1 + Math.min(Math.abs(this.vy) * 0.00018, 0.22);
+      const stretchX = 1 - Math.min(Math.abs(this.vy) * 0.00012, 0.12);
+      this.container.setScale(stretchX, stretchY);
 
       if (this.y >= this.groundY) {
+        const impactVy = this.vy;
         this.y = this.groundY;
         this.vy = 0;
         this.onGround = true;
         this._landed = true;
-        // Squash on landing.
+        this.jumpCount = 0;
+
+        // Squash on landing proportional to impact velocity
+        const squashScaleY = Math.max(0.72, 1 - Math.abs(impactVy) * 0.00028);
+        const squashScaleX = 1 + (1 - squashScaleY) * 0.5;
+
         this.scene.tweens.add({
           targets: this.container,
-          scaleX: 1.16,
-          scaleY: 0.84,
-          duration: 80,
+          scaleX: squashScaleX,
+          scaleY: squashScaleY,
+          duration: 90,
           yoyo: true,
           onComplete: () => this.container.setScale(1),
         });
@@ -156,24 +224,40 @@ export default class Runner {
       this.container.y = this.y;
     }
 
+    if (this.dashing) {
+      const elapsedDash = this.scene.time.now - this.dashTime;
+      if (elapsedDash < 200) {
+        const progress = elapsedDash / 200;
+        this.container.x = CFG.RUNNER_X + Math.sin(progress * Math.PI) * 110;
+        this.shadow.x = this.container.x;
+      } else {
+        this.dashing = false;
+        this.container.x = CFG.RUNNER_X;
+        this.shadow.x = CFG.RUNNER_X;
+      }
+    } else {
+      this.container.x = CFG.RUNNER_X;
+      this.shadow.x = CFG.RUNNER_X;
+    }
+
+    // Update headband tail segments waving motion
+    const time = this.scene.time.now / 1000;
+    const speedFactor = 1 + speedNorm * 1.5;
+    this.tailSegments.forEach((seg, i) => {
+      // Ribbon waves dynamically
+      const wave = Math.sin(time * 12 * speedFactor - i * 1.2) * (2.5 + speedNorm * 2.5);
+      seg.y = -52 + wave;
+      // Position each segment sequentially behind the head
+      seg.x = -6 - i * 4.5 + Math.cos(time * 8 - i * 0.6) * 0.8;
+      // Slight rotation wave
+      seg.rotation = Math.sin(time * 10 * speedFactor - i * 0.8) * 0.15;
+    });
+
     // Shadow shrinks and fades with height.
     const air = this.groundY - this.y;
     const f = Phaser.Math.Clamp(1 - air / 160, 0.35, 1);
     this.shadow.scaleX = f;
     this.shadow.alpha = 0.25 * f;
-  }
-
-  spawnGhost() {
-    const g = this.scene.add
-      .ellipse(this.x - 8, this.container.y - 30, 18, 42, this.bodyColor, 0.16)
-      .setDepth(3);
-    this.scene.tweens.add({
-      targets: g,
-      alpha: 0,
-      x: g.x - 28,
-      duration: 260,
-      onComplete: () => g.destroy(),
-    });
   }
 
   // True once per landing - used by the scene for dust particles.
@@ -187,15 +271,16 @@ export default class Runner {
   // sliding so the runner fits under hanging gates.
   getHitbox() {
     if (this.sliding) {
-      return new Phaser.Geom.Rectangle(this.x - 12, this.y - 26, 24, 24);
+      return new Phaser.Geom.Rectangle(this.container.x - 12, this.y - 26, 24, 24);
     }
-    return new Phaser.Geom.Rectangle(this.x - 11, this.container.y - 52, 22, 50);
+    return new Phaser.Geom.Rectangle(this.container.x - 11, this.container.y - 52, 22, 50);
   }
 
   setDead() {
     [this.armB, this.legB, this.torso, this.legF, this.armF, this.band, this.head].forEach((p) =>
       p.setFillStyle(0xd33a3a)
     );
+    this.trailEmitter.stop();
   }
 
   // Restore original colors after a revive.
@@ -205,5 +290,99 @@ export default class Runner {
     );
     this.band.setFillStyle(this.accentColor);
     this.endSlide();
+    this.trailEmitter.start();
+  }
+
+  destroy() {
+    if (this.trailEmitter) this.trailEmitter.destroy();
+    if (this.shadow) this.shadow.destroy();
+    if (this.container) this.container.destroy();
+  }
+
+  getTrailConfig(skinName, accentColor) {
+    const base = {
+      lifespan: 400,
+      scale: { start: 0.6, end: 0 },
+      alpha: { start: 0.5, end: 0 },
+      blendMode: 'ADD',
+      emitting: true,
+      frequency: 40,
+    };
+
+    switch (skinName) {
+      case 'EMBER':
+        return {
+          ...base,
+          texture: 'spark',
+          lifespan: 500,
+          speed: { min: 40, max: 90 },
+          angle: { min: 140, max: 220 },
+          scale: { start: 0.8, end: 0.1 },
+          alpha: { start: 0.8, end: 0 },
+          tint: 0xff8c00,
+          frequency: 30,
+        };
+      case 'TOXIC':
+        return {
+          ...base,
+          texture: 'glow',
+          lifespan: 600,
+          speedY: { min: -10, max: 30 },
+          speedX: { min: -120, max: -60 },
+          scale: { start: 0.12, end: 0.02 },
+          alpha: { start: 0.6, end: 0 },
+          tint: 0x39ff14,
+          frequency: 35,
+        };
+      case 'ROYAL':
+        return {
+          ...base,
+          texture: 'spark',
+          lifespan: 500,
+          speed: { min: 30, max: 70 },
+          angle: { min: 0, max: 360 },
+          scale: { start: 0.7, end: 0.1 },
+          alpha: { start: 0.8, end: 0 },
+          tint: 0xffd700,
+          frequency: 25,
+        };
+      case 'VOID':
+        return {
+          ...base,
+          texture: 'spark',
+          lifespan: 400,
+          speedX: { min: -200, max: -100 },
+          speedY: { min: -20, max: 20 },
+          scale: { start: 0.9, end: 0.1 },
+          alpha: { start: 0.8, end: 0 },
+          tint: 0xff00ff,
+          frequency: 20,
+        };
+      case 'CYBER':
+        return {
+          ...base,
+          texture: 'spark',
+          lifespan: 500,
+          speedX: { min: -180, max: -90 },
+          speedY: { min: -15, max: 15 },
+          scale: { start: 0.8, end: 0.1 },
+          alpha: { start: 0.75, end: 0 },
+          tint: accentColor,
+          frequency: 25,
+        };
+      case 'CLASSIC':
+      default:
+        return {
+          ...base,
+          texture: 'dot',
+          lifespan: 300,
+          speedX: { min: -150, max: -80 },
+          speedY: { min: -10, max: 10 },
+          scale: { start: 0.7, end: 0 },
+          alpha: { start: 0.4, end: 0 },
+          tint: accentColor,
+          frequency: 45,
+        };
+    }
   }
 }
