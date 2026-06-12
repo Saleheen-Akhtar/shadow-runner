@@ -51,6 +51,38 @@ export default class GameScene extends Phaser.Scene {
     this.reviveTimer = null;
     this.invulnUntil = 0;
 
+    // Check if we are restoring from a saved revive state (in case the ad SDK reloaded the scene)
+    const savedRevive = localStorage.getItem('shadow-runner-revive-state');
+    if (savedRevive) {
+      try {
+        const state = JSON.parse(savedRevive);
+        this.score = state.score;
+        this.elapsed = state.elapsed;
+        this.coins = state.coins;
+        this.reviveUsed = true;
+        this.speed = Math.min(CFG.MAX_SPEED, CFG.BASE_SPEED + CFG.SPEED_RAMP * (this.elapsed / 1000));
+
+        Object.values(this.worlds).forEach((w) => {
+          w.nextSpawnAt = this.elapsed + 1400;
+          w.nextCoinAt = this.elapsed + 3000;
+          // Trigger blinking invulnerability from the start
+          this.tweens.add({
+            targets: w.runner.container,
+            alpha: 0.25,
+            duration: 140,
+            yoyo: true,
+            repeat: 6,
+            onComplete: () => w.runner.container.setAlpha(1),
+          });
+        });
+
+        this.invulnUntil = this.elapsed + 2000;
+        localStorage.removeItem('shadow-runner-revive-state');
+      } catch (e) {
+        localStorage.removeItem('shadow-runner-revive-state');
+      }
+    }
+
     // Fever Mode state
     this.feverActive = false;
     this.feverProgress = 0;
@@ -2093,14 +2125,28 @@ export default class GameScene extends Phaser.Scene {
       this.reviveTimer = null;
     }
     this.reviveCountdownText.setText('...');
+
+    // Save state in case the ad SDK reloads/restarts the scene
+    const reviveState = {
+      score: this.score,
+      elapsed: this.elapsed,
+      coins: this.coins,
+    };
+    localStorage.setItem('shadow-runner-revive-state', JSON.stringify(reviveState));
+
     portal.rewardedAd().then((ok) => {
       this.reviveBusy = false;
-      if (ok) this.doRevive();
-      else this.finishRun();
+      if (ok) {
+        this.doRevive();
+      } else {
+        localStorage.removeItem('shadow-runner-revive-state');
+        this.finishRun();
+      }
     });
   }
 
   doRevive() {
+    localStorage.removeItem('shadow-runner-revive-state');
     this.clearRevivePrompt();
     this.reviveUsed = true;
 

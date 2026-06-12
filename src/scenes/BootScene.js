@@ -41,20 +41,21 @@ export default class BootScene extends Phaser.Scene {
     block.destroy();
 
     // Dynamic monospace text textures for Matrix trail.
-    const t0 = this.make.text({
-      text: '0',
-      style: { font: 'bold 16px "JetBrains Mono", monospace', fill: '#ffffff' }
-    }, false);
-    this.textures.addCanvas('matrix_0', t0.canvas);
+    let texture0 = this.textures.createCanvas('matrix_0', 16, 20);
+    if (texture0) {
+      texture0.context.font = 'bold 16px "JetBrains Mono", monospace';
+      texture0.context.fillStyle = '#ffffff';
+      texture0.context.fillText('0', 2, 16);
+      texture0.refresh();
+    }
 
-    const t1 = this.make.text({
-      text: '1',
-      style: { font: 'bold 16px "JetBrains Mono", monospace', fill: '#ffffff' }
-    }, false);
-    this.textures.addCanvas('matrix_1', t1.canvas);
-
-    t0.destroy();
-    t1.destroy();
+    let texture1 = this.textures.createCanvas('matrix_1', 16, 20);
+    if (texture1) {
+      texture1.context.font = 'bold 16px "JetBrains Mono", monospace';
+      texture1.context.fillStyle = '#ffffff';
+      texture1.context.fillText('1', 2, 16);
+      texture1.refresh();
+    }
 
     // Remove the CSS loading screen.
     const loader = document.getElementById('loader');
