@@ -63,6 +63,13 @@ export default class GameScene extends Phaser.Scene {
         this.speed = Math.min(CFG.MAX_SPEED, CFG.BASE_SPEED + CFG.SPEED_RAMP * (this.elapsed / 1000));
 
         Object.values(this.worlds).forEach((w) => {
+          this.tweens.killTweensOf(w.runner.container);
+          w.runner.container.y = w.def.groundY;
+          w.runner.y = w.def.groundY;
+          w.runner.vy = 0;
+          w.runner.onGround = true;
+          w.runner.container.setScale(1);
+
           w.nextSpawnAt = this.elapsed + 1400;
           w.nextCoinAt = this.elapsed + 3000;
           // Trigger blinking invulnerability from the start
@@ -77,6 +84,7 @@ export default class GameScene extends Phaser.Scene {
         });
 
         this.invulnUntil = this.elapsed + 2000;
+        this.stopSync();
         localStorage.removeItem('shadow-runner-revive-state');
       } catch (e) {
         localStorage.removeItem('shadow-runner-revive-state');
@@ -434,7 +442,7 @@ export default class GameScene extends Phaser.Scene {
     this.lastMilestone = 0;
 
     this.scoreText = this.add
-      .text(cx, 14, '0', {
+      .text(cx, 14, String(Math.floor(this.score)), {
         fontFamily: FONTS.HEADING,
         fontSize: '32px',
         color: COLORS.TEXT_PRIMARY,
@@ -456,7 +464,7 @@ export default class GameScene extends Phaser.Scene {
       .setDepth(20);
 
     this.coinText = this.add
-      .text(cx + 45, 50, '\u25cf 0', {
+      .text(cx + 45, 50, `\u25cf ${this.coins}`, {
         fontFamily: FONTS.MONO,
         fontSize: '12px',
         color: COLORS.GOLD,
@@ -698,23 +706,7 @@ export default class GameScene extends Phaser.Scene {
     // Sync events
     if (!this.syncActive && this.elapsed >= this.nextSyncAt) this.startSync();
     if (this.syncActive && this.elapsed >= this.syncUntil) {
-      this.syncActive = false;
-      this.syncText.setVisible(false);
-      this.syncTween.pause();
-      this.divider.setFillStyle(COLORS.GOLD_HEX, 0.3);
-      this.divider.scaleY = 1;
-      this.nextSyncAt = this.elapsed + this.rand(CFG.SYNC_MIN_MS, CFG.SYNC_MAX_MS);
-
-      // Stop and hide grids
-      this.syncGrids.forEach((g) => {
-        this.tweens.killTweensOf(g);
-        this.tweens.add({
-          targets: g,
-          alpha: 0,
-          duration: 200,
-          onComplete: () => g.setVisible(false),
-        });
-      });
+      this.stopSync();
     }
 
     // Freeze power-up spawning
@@ -1452,6 +1444,30 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  stopSync() {
+    this.syncActive = false;
+    if (this.syncText) this.syncText.setVisible(false);
+    if (this.syncTween) this.syncTween.pause();
+    if (this.divider) {
+      this.divider.setFillStyle(COLORS.GOLD_HEX, 0.3);
+      this.divider.scaleY = 1;
+    }
+    this.nextSyncAt = this.elapsed + this.rand(CFG.SYNC_MIN_MS, CFG.SYNC_MAX_MS);
+
+    // Stop and hide grids
+    if (this.syncGrids) {
+      this.syncGrids.forEach((g) => {
+        this.tweens.killTweensOf(g);
+        this.tweens.add({
+          targets: g,
+          alpha: 0,
+          duration: 200,
+          onComplete: () => g.setVisible(false),
+        });
+      });
+    }
+  }
+
   spawnPowerup() {
     if (this.syncActive) return false;
     const keys = Object.keys(this.worlds).filter((k) => this.elapsed >= this.worlds[k].frozenUntil);
@@ -2100,31 +2116,37 @@ export default class GameScene extends Phaser.Scene {
       repeat: 2,
       callback: () => {
         remaining--;
-        if (remaining <= 0) this.finishRun();
-        else this.reviveCountdownText.setText(String(remaining));
+        if (remaining <= 0) {
+          this.finishRun();
+        } else if (this.reviveCountdownText && this.reviveCountdownText.scene) {
+          this.reviveCountdownText.setText(String(remaining));
+        }
       },
     });
   }
 
   clearRevivePrompt() {
     if (this.reviveTimer) {
-      this.reviveTimer.remove(false);
+      this.time.removeEvent(this.reviveTimer);
       this.reviveTimer = null;
     }
     if (this.reviveObjs) {
       this.reviveObjs.forEach((o) => o.destroy());
       this.reviveObjs = null;
     }
+    this.reviveCountdownText = null;
   }
 
   tryRevive() {
     if (this.reviveBusy) return;
     this.reviveBusy = true;
     if (this.reviveTimer) {
-      this.reviveTimer.remove(false);
+      this.time.removeEvent(this.reviveTimer);
       this.reviveTimer = null;
     }
-    this.reviveCountdownText.setText('...');
+    if (this.reviveCountdownText && this.reviveCountdownText.scene) {
+      this.reviveCountdownText.setText('...');
+    }
 
     // Save state in case the ad SDK reloads/restarts the scene
     const reviveState = {
@@ -2136,7 +2158,7 @@ export default class GameScene extends Phaser.Scene {
 
     portal.rewardedAd().then((ok) => {
       this.reviveBusy = false;
-      if (ok) {
+      if (ok !== false) {
         this.doRevive();
       } else {
         localStorage.removeItem('shadow-runner-revive-state');
@@ -2152,6 +2174,7 @@ export default class GameScene extends Phaser.Scene {
 
     this.stopFeverMode();
     this.stopAnomaly();
+    this.stopSync();
 
     Object.values(this.worlds).forEach((w) => {
       w.obstacles.forEach((o) => {
@@ -2180,6 +2203,14 @@ export default class GameScene extends Phaser.Scene {
         w.shieldGfx.destroy();
         w.shieldGfx = null;
       }
+
+      this.tweens.killTweensOf(w.runner.container);
+      w.runner.container.y = w.def.groundY;
+      w.runner.y = w.def.groundY;
+      w.runner.vy = 0;
+      w.runner.onGround = true;
+      w.runner.container.setScale(1);
+
       w.nextSpawnAt = this.elapsed + 1400;
       w.nextCoinAt = this.elapsed + 3000;
       w.runner.revive();
