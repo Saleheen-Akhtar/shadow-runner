@@ -12,8 +12,69 @@
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;700&family=Outfit:wght@700;900&display=swap" rel="stylesheet" />
 
     <style>
-      html, body { margin: 0; padding: 0; background: #0a0a14; height: 100%; overflow: hidden; }
+      html, body {
+        margin: 0; padding: 0; background: #0a0a14; height: 100%; overflow: hidden;
+        touch-action: none; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+      }
       #game { width: 100%; height: 100%; }
+
+      /* Orientation warning overlay */
+      #orientation-warning {
+        display: none;
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        background: #0a0a14;
+        color: #F2F0E8;
+        font-family: 'Outfit', sans-serif;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 24px;
+      }
+      @media (orientation: portrait) {
+        #orientation-warning {
+          display: flex;
+        }
+      }
+      #orientation-warning h1 {
+        font-size: 24px;
+        color: #FFD34D;
+        margin: 20px 0 8px;
+        letter-spacing: 2px;
+      }
+      #orientation-warning p {
+        font-size: 14px;
+        color: #8A8A9A;
+        max-width: 280px;
+        line-height: 1.5;
+        margin: 0;
+      }
+      .phone-icon {
+        width: 44px;
+        height: 72px;
+        border: 4px solid #F2F0E8;
+        border-radius: 8px;
+        position: relative;
+        animation: rotatePhone 2.5s ease-in-out infinite;
+      }
+      .phone-icon::after {
+        content: '';
+        position: absolute;
+        bottom: 6px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #F2F0E8;
+      }
+      @keyframes rotatePhone {
+        0%, 10% { transform: rotate(0deg); }
+        40%, 60% { transform: rotate(-90deg); }
+        90%, 100% { transform: rotate(0deg); }
+      }
 
       /* Loading screen removed by BootScene once Phaser is ready. */
       #loader {
@@ -33,6 +94,11 @@
     </style>
   </head>
   <body>
+    <div id="orientation-warning">
+      <div class="phone-icon"></div>
+      <h1>ROTATE YOUR DEVICE</h1>
+      <p>Shadow Runner is best experienced in landscape mode.</p>
+    </div>
     <div id="loader"><div class="dot"></div></div>
     <div id="game"></div>
     <script type="module" src="/src/main.js"></script>

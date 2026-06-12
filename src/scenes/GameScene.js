@@ -474,36 +474,21 @@ export default class GameScene extends Phaser.Scene {
       this.muteBtn.setText(muted ? '\uD83D\uDD07' : '\uD83D\uDD0A');
     });
 
-    // Pause overlay — darker, more premium
-    this.pauseOverlay = this.add
-      .rectangle(cx, 270, CFG.WIDTH, CFG.HEIGHT, 0x000000, 0.65)
-      .setDepth(30)
-      .setVisible(false);
-    this.pauseTitle = this.add
-      .text(cx, 250, 'PAUSED', {
+    // Pause button — circle with gold border
+    this.add.circle(CFG.WIDTH - 64, 24, 16, 0x0a0a14, 0.7).setDepth(20)
+      .setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.35);
+    this.pauseBtn = this.add
+      .text(CFG.WIDTH - 64, 24, '⏸', {
         fontFamily: FONTS.HEADING,
-        fontSize: '30px',
-        color: '#ffffff',
+        fontSize: '15px',
+        color: COLORS.GOLD,
       })
       .setOrigin(0.5)
-      .setDepth(31)
-      .setVisible(false);
-    this.pauseHint = this.add
-      .text(cx, 290, 'TAP TO RESUME', {
-        fontFamily: FONTS.MONO,
-        fontSize: '14px',
-        color: COLORS.TEXT_SECONDARY,
-      })
-      .setOrigin(0.5)
-      .setDepth(31)
-      .setVisible(false);
-    this.pauseHintTween = this.tweens.add({
-      targets: this.pauseHint,
-      alpha: { from: 0.4, to: 1 },
-      duration: 800,
-      yoyo: true,
-      repeat: -1,
-      paused: true,
+      .setDepth(21)
+      .setInteractive({ useHandCursor: true });
+    this.pauseBtn.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.pauseGame();
     });
   }
 
@@ -517,37 +502,41 @@ export default class GameScene extends Phaser.Scene {
     kb.on('keydown-DOWN', () => this.handleAction('dark', 'slide'));
     kb.on('keydown-RIGHT', () => this.handleAction('dark', 'dash'));
 
+    // Keyboard shortcuts for pausing
+    kb.on('keydown-ESC', () => this.pauseGame());
+    kb.on('keydown-P', () => this.pauseGame());
+
     // Touch: tap = jump, swipe down = slide, swipe right = dash.
     this.input.addPointer(1);
     this.touch = new Map();
     this.input.on('pointerdown', (pointer) => {
-      this.touch.set(pointer.id, { x0: pointer.x, y0: pointer.y, acted: false });
+      this.touch.set(pointer.id, { x0: pointer.worldX, y0: pointer.worldY, acted: false });
     });
     this.input.on('pointermove', (pointer) => {
       const st = this.touch.get(pointer.id);
       if (!st || st.acted || !pointer.isDown) return;
-      const threshold = 24 * (this.scale.height / CFG.HEIGHT);
-      const dx = pointer.x - st.x0;
-      const dy = pointer.y - st.y0;
+      const threshold = 24; // Standard design-space swipe distance threshold
+      const dx = pointer.worldX - st.x0;
+      const dy = pointer.worldY - st.y0;
 
       // Detect swipe right for dash
       if (dx > threshold && dx > Math.abs(dy)) {
         st.acted = true;
-        const world = st.y0 < this.scale.height / 2 ? 'light' : 'dark';
+        const world = st.y0 < CFG.HEIGHT / 2 ? 'light' : 'dark';
         this.handleAction(world, 'dash');
         return;
       }
 
       if (Math.abs(dy) < threshold) return;
       st.acted = true;
-      const world = st.y0 < this.scale.height / 2 ? 'light' : 'dark';
+      const world = st.y0 < CFG.HEIGHT / 2 ? 'light' : 'dark';
       this.handleAction(world, dy > 0 ? 'slide' : 'jump');
     });
     this.input.on('pointerup', (pointer) => {
       const st = this.touch.get(pointer.id);
       this.touch.delete(pointer.id);
       if (!st || st.acted) return;
-      const world = st.y0 < this.scale.height / 2 ? 'light' : 'dark';
+      const world = st.y0 < CFG.HEIGHT / 2 ? 'light' : 'dark';
       this.handleAction(world, 'jump');
     });
   }
@@ -1798,22 +1787,181 @@ export default class GameScene extends Phaser.Scene {
   pauseGame() {
     if (this.isGameOver || this.isPaused) return;
     this.isPaused = true;
-    this.pauseOverlay.setVisible(true);
-    this.pauseTitle.setVisible(true);
-    this.pauseHint.setVisible(true);
-    this.pauseHintTween.resume();
+    this.showPauseMenu();
     portal.gameplayStop();
     audio.pauseBGM();
   }
 
   resumeGame() {
     this.isPaused = false;
-    this.pauseOverlay.setVisible(false);
-    this.pauseTitle.setVisible(false);
-    this.pauseHint.setVisible(false);
-    this.pauseHintTween.pause();
+    this.clearPauseMenu();
     portal.gameplayStart();
     audio.resumeBGM();
+  }
+
+  showPauseMenu() {
+    if (this.pauseObjs) return;
+    const cx = CFG.WIDTH / 2;
+    const cy = CFG.HEIGHT / 2;
+    const objs = [];
+
+    // 1. Dark overlay
+    const overlay = this.add.rectangle(cx, cy, CFG.WIDTH, CFG.HEIGHT, 0x000000, 0.65).setDepth(30);
+    objs.push(overlay);
+
+    // 2. Glassmorphic panel
+    const panel = drawGlassPanel(this, cx - 200, cy - 110, 400, 220, 31);
+    objs.push(panel);
+
+    // 3. Title: PAUSED
+    const title = this.add
+      .text(cx, cy - 60, 'PAUSED', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '32px',
+        color: '#ffffff',
+      })
+      .setOrigin(0.5)
+      .setDepth(32);
+    objs.push(title);
+
+    // 4. Buttons
+    const btnW = 100;
+    const btnH = 38;
+    const btnY = cy + 25;
+    const btnR = 10;
+
+    // --- RESUME Button (Gold) ---
+    const resumeBg = this.add.graphics().setDepth(32);
+    resumeBg.fillStyle(COLORS.GOLD_HEX, 1);
+    resumeBg.fillRoundedRect(cx - 120 - btnW / 2, btnY - btnH / 2, btnW, btnH, btnR);
+    objs.push(resumeBg);
+
+    const resumeText = this.add
+      .text(cx - 120, btnY, 'RESUME', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '13px',
+        color: '#1d1d24',
+      })
+      .setOrigin(0.5)
+      .setDepth(33);
+    objs.push(resumeText);
+
+    const resumeHit = this.add
+      .rectangle(cx - 120, btnY, btnW + 20, btnH + 16)
+      .setDepth(34)
+      .setAlpha(0.001)
+      .setInteractive({ useHandCursor: true });
+    resumeHit.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.resumeGame();
+    });
+    objs.push(resumeHit);
+
+    // --- RESTART Button (Outline) ---
+    const restartBg = this.add.graphics().setDepth(32);
+    restartBg.fillStyle(0x0a0a14, 0.6);
+    restartBg.fillRoundedRect(cx - btnW / 2, btnY - btnH / 2, btnW, btnH, btnR);
+    restartBg.lineStyle(1.5, COLORS.GOLD_HEX, 0.5);
+    restartBg.strokeRoundedRect(cx - btnW / 2, btnY - btnH / 2, btnW, btnH, btnR);
+    objs.push(restartBg);
+
+    const restartText = this.add
+      .text(cx, btnY, 'RESTART', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '13px',
+        color: COLORS.GOLD,
+      })
+      .setOrigin(0.5)
+      .setDepth(33);
+    objs.push(restartText);
+
+    const restartHit = this.add
+      .rectangle(cx, btnY, btnW + 20, btnH + 16)
+      .setDepth(34)
+      .setAlpha(0.001)
+      .setInteractive({ useHandCursor: true });
+    restartHit.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.clearPauseMenu();
+      this.isPaused = false;
+      this.scene.restart();
+    });
+    objs.push(restartHit);
+
+    // --- MENU Button (Outline) ---
+    const menuBg = this.add.graphics().setDepth(32);
+    menuBg.fillStyle(0x0a0a14, 0.6);
+    menuBg.fillRoundedRect(cx + 120 - btnW / 2, btnY - btnH / 2, btnW, btnH, btnR);
+    menuBg.lineStyle(1.5, COLORS.GOLD_HEX, 0.5);
+    menuBg.strokeRoundedRect(cx + 120 - btnW / 2, btnY - btnH / 2, btnW, btnH, btnR);
+    objs.push(menuBg);
+
+    const menuText = this.add
+      .text(cx + 120, btnY, 'MENU', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '13px',
+        color: COLORS.GOLD,
+      })
+      .setOrigin(0.5)
+      .setDepth(33);
+    objs.push(menuText);
+
+    const menuHit = this.add
+      .rectangle(cx + 120, btnY, btnW + 20, btnH + 16)
+      .setDepth(34)
+      .setAlpha(0.001)
+      .setInteractive({ useHandCursor: true });
+    menuHit.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.clearPauseMenu();
+      this.isPaused = false;
+      this.scene.start('Menu');
+    });
+    objs.push(menuHit);
+
+    // ESC or P key listener to resume (only once while paused)
+    this.pauseKeyEscListener = (event) => {
+      if (event.key === 'Escape' || event.key === 'p' || event.key === 'P') {
+        this.resumeGame();
+      }
+    };
+    window.addEventListener('keydown', this.pauseKeyEscListener);
+
+    objs.forEach((o) => {
+      if (o.setResolution && o.style) o.setResolution(DPR * 1.25);
+    });
+
+    this.pauseObjs = objs;
+
+    // Animate entrance
+    objs.forEach((o) => {
+      if (o.setScale) o.setScale(0.9);
+      o.setAlpha(0);
+    });
+
+    this.tweens.add({
+      targets: objs,
+      alpha: 1,
+      duration: 200,
+      ease: 'Cubic.easeOut',
+    });
+
+    objs.forEach((o) => {
+      if (o.setScale) {
+        this.tweens.add({ targets: o, scale: 1, duration: 200, ease: 'Back.easeOut' });
+      }
+    });
+  }
+
+  clearPauseMenu() {
+    if (this.pauseKeyEscListener) {
+      window.removeEventListener('keydown', this.pauseKeyEscListener);
+      this.pauseKeyEscListener = null;
+    }
+    if (this.pauseObjs) {
+      this.pauseObjs.forEach((o) => o.destroy());
+      this.pauseObjs = null;
+    }
   }
 
   endRun() {

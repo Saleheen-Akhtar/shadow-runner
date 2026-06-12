@@ -383,7 +383,8 @@ export default class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: swatch, alpha: 1, duration: 300, delay: 850 + i * 40 });
 
       if (unlocked) {
-        swatch.setInteractive({ useHandCursor: true });
+        swatch.setInteractive(new Phaser.Geom.Circle(0, 0, 20), Phaser.Geom.Circle.Contains);
+        if (swatch.input) swatch.input.cursor = 'pointer';
         swatch.on('pointerdown', (pointer, lx, ly, event) => {
           event.stopPropagation();
           localStorage.setItem(SKIN_KEY, String(i));

@@ -232,7 +232,7 @@ export default class GameOverScene extends Phaser.Scene {
     againContainer.setScale(0);
 
     const againHitZone = this.add
-      .rectangle(cx - 90, btnY, btnW, btnH)
+      .rectangle(cx - 90, btnY, btnW + 24, btnH + 16)
       .setOrigin(0.5)
       .setDepth(8)
       .setAlpha(0.001)
@@ -262,7 +262,7 @@ export default class GameOverScene extends Phaser.Scene {
     menuContainer.setScale(0);
 
     const menuHitZone = this.add
-      .rectangle(cx + 90, btnY, btnW, btnH)
+      .rectangle(cx + 90, btnY, btnW + 24, btnH + 16)
       .setOrigin(0.5)
       .setDepth(8)
       .setAlpha(0.001)
