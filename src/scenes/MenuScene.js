@@ -310,19 +310,7 @@ export default class MenuScene extends Phaser.Scene {
       this.tweens.add({ targets: el, alpha: 1, duration: 350, delay: 850 });
     });
 
-    // ── Mute toggle — circle button ──────────────────────────
-    const muteCircle = this.add.circle(CFG.WIDTH - 24, 106, 16, 0x0a0a14, 0.7).setDepth(5);
-    muteCircle.setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.4);
-    this.muteBtn = this.add
-      .text(CFG.WIDTH - 24, 106, audio.muted ? '\uD83D\uDD07' : '\uD83D\uDD0A', { fontSize: '20px' })
-      .setOrigin(0.5)
-      .setDepth(6)
-      .setInteractive({ useHandCursor: true });
-    this.muteBtn.on('pointerdown', (pointer, lx, ly, event) => {
-      event.stopPropagation();
-      const muted = audio.toggleMute();
-      this.muteBtn.setText(muted ? '\uD83D\uDD07' : '\uD83D\uDD0A');
-    });
+
 
     // ── Two live runners jogging in place ──────────────────────
     const skin = getSelectedSkin();

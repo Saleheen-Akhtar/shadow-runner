@@ -460,25 +460,11 @@ export default class GameScene extends Phaser.Scene {
       paused: true,
     });
 
-    // Mute button — circle with gold border
+    // Pause button — circle with gold border
     this.add.circle(CFG.WIDTH - 24, 24, 16, 0x0a0a14, 0.7).setDepth(20)
       .setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.35);
-    this.muteBtn = this.add
-      .text(CFG.WIDTH - 24, 24, audio.muted ? '\uD83D\uDD07' : '\uD83D\uDD0A', { fontSize: '20px' })
-      .setOrigin(0.5)
-      .setDepth(21)
-      .setInteractive({ useHandCursor: true });
-    this.muteBtn.on('pointerdown', (pointer, lx, ly, event) => {
-      event.stopPropagation();
-      const muted = audio.toggleMute();
-      this.muteBtn.setText(muted ? '\uD83D\uDD07' : '\uD83D\uDD0A');
-    });
-
-    // Pause button — circle with gold border
-    this.add.circle(CFG.WIDTH - 64, 24, 16, 0x0a0a14, 0.7).setDepth(20)
-      .setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.35);
     this.pauseBtn = this.add
-      .text(CFG.WIDTH - 64, 24, '⏸', {
+      .text(CFG.WIDTH - 24, 24, '⏸', {
         fontFamily: FONTS.HEADING,
         fontSize: '15px',
         color: COLORS.GOLD,
