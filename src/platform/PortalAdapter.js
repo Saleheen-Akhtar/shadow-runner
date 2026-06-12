@@ -9,6 +9,19 @@
 //                CrazyGames.SDK.ad.requestAd('midgame' | 'rewarded')
 //
 // All hooks are intentionally no-ops for local/Cloudflare builds.
+function loadScript(url) {
+  return new Promise((resolve) => {
+    const script = document.createElement('script');
+    script.src = url;
+    script.onload = () => resolve(true);
+    script.onerror = () => {
+      console.warn("PortalAdapter: Failed to load script:", url);
+      resolve(false);
+    };
+    document.head.appendChild(script);
+  });
+}
+
 class PortalAdapter {
   constructor() {
     this.platform = 'none'; // 'poki', 'crazygames', or 'none'
@@ -16,32 +29,45 @@ class PortalAdapter {
   }
 
   async init() {
-    // 1. Detect and initialize Poki SDK
-    if (typeof PokiSDK !== 'undefined') {
-      try {
-        await PokiSDK.init();
-        this.platform = 'poki';
-        console.log("PortalAdapter: Poki SDK initialized.");
-        return true;
-      } catch (e) {
-        console.warn("PortalAdapter: Poki SDK init failed:", e);
+    const hostname = window.location.hostname;
+    const searchParams = new URLSearchParams(window.location.search);
+    const platformParam = searchParams.get('platform');
+
+    // 1. Detect and load Poki SDK
+    if (platformParam === 'poki' || hostname.includes('poki') || hostname.includes('poki-gdn')) {
+      console.log("PortalAdapter: Poki environment detected. Loading SDK...");
+      const loaded = await loadScript("https://game-cdn.poki.com/scripts/v2/poki-sdk.js");
+      if (loaded && typeof PokiSDK !== 'undefined') {
+        try {
+          await PokiSDK.init();
+          this.platform = 'poki';
+          console.log("PortalAdapter: Poki SDK initialized.");
+          return true;
+        } catch (e) {
+          console.warn("PortalAdapter: Poki SDK init failed:", e);
+        }
       }
     }
 
-    // 2. Detect and initialize CrazyGames SDK
-    if (window.CrazyGames && window.CrazyGames.SDK) {
-      try {
-        this.crazySdk = window.CrazyGames.SDK;
-        await this.crazySdk.init();
-        this.platform = 'crazygames';
-        console.log("PortalAdapter: CrazyGames SDK initialized.");
-        return true;
-      } catch (e) {
-        console.warn("PortalAdapter: CrazyGames SDK init failed:", e);
+    // 2. Detect and load CrazyGames SDK
+    if (platformParam === 'crazygames' || hostname.includes('crazygames') || hostname.includes('crazy') || hostname.includes('y8')) {
+      console.log("PortalAdapter: CrazyGames environment detected. Loading SDK...");
+      const loaded = await loadScript("https://sdk.crazygames.com/crazygames-sdk-v3.js");
+      if (loaded && window.CrazyGames && window.CrazyGames.SDK) {
+        try {
+          this.crazySdk = window.CrazyGames.SDK;
+          await this.crazySdk.init();
+          this.platform = 'crazygames';
+          window.crazyGamesInitialized = true;
+          console.log("PortalAdapter: CrazyGames SDK initialized.");
+          return true;
+        } catch (e) {
+          console.warn("PortalAdapter: CrazyGames SDK init failed:", e);
+        }
       }
     }
 
-    console.log("PortalAdapter: Running in local/mock mode.");
+    console.log("PortalAdapter: Running in local/mock/development mode.");
     return false;
   }
 

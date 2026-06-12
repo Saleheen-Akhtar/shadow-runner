@@ -134,12 +134,16 @@ export const secureStorage = {
     const backend = getStorageBackend();
     const val = backend.getItem(key);
     if (val === null) return null;
-    const decrypted = decrypt(val);
-    return decrypted !== null ? decrypted : val;
+    
+    if (typeof val === 'string' && val.startsWith('_enc_')) {
+      const decrypted = decrypt(val.substring(5));
+      return decrypted !== null ? decrypted : val;
+    }
+    return val;
   },
   setItem(key, val) {
     const backend = getStorageBackend();
-    backend.setItem(key, encrypt(val));
+    backend.setItem(key, '_enc_' + encrypt(val));
   },
   removeItem(key) {
     const backend = getStorageBackend();
