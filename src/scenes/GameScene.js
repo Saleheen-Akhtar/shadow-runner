@@ -500,6 +500,27 @@ export default class GameScene extends Phaser.Scene {
       paused: true,
     });
 
+    // Fullscreen button
+    this.add.circle(CFG.WIDTH - 60, 24, 16, 0x0a0a14, 0.7).setDepth(20)
+      .setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.35);
+    const fsBtn = this.add
+      .text(CFG.WIDTH - 60, 24, '⛶', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '15px',
+        color: COLORS.GOLD,
+      })
+      .setOrigin(0.5)
+      .setDepth(21)
+      .setInteractive({ useHandCursor: true });
+    fsBtn.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      if (this.scale.isFullscreen) {
+        this.scale.stopFullscreen();
+      } else {
+        this.scale.startFullscreen();
+      }
+    });
+
     // Pause button — circle with gold border
     this.add.circle(CFG.WIDTH - 24, 24, 16, 0x0a0a14, 0.7).setDepth(20)
       .setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.35);

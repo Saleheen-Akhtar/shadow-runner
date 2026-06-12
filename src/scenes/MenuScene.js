@@ -283,7 +283,29 @@ export default class MenuScene extends Phaser.Scene {
     this.buildSkinPicker(cx, 355, best);
 
     // ── Daily Challenge HUD ───────────────────────────────────
-    this.buildDailyChallengeHUD(CFG.WIDTH - 120, 48);
+    this.buildDailyChallengeHUD(CFG.WIDTH - 150, 48);
+
+    // Fullscreen button
+    this.add.circle(CFG.WIDTH - 24, 24, 16, 0x0a0a14, 0.7).setDepth(20)
+      .setStrokeStyle(1.5, COLORS.GOLD_HEX, 0.35);
+    const fsBtn = this.add
+      .text(CFG.WIDTH - 24, 24, '⛶', {
+        fontFamily: FONTS.HEADING,
+        fontSize: '15px',
+        color: COLORS.GOLD,
+      })
+      .setOrigin(0.5)
+      .setDepth(21)
+      .setInteractive({ useHandCursor: true });
+    if (fsBtn.input) fsBtn.input.cursor = 'pointer';
+    fsBtn.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      if (this.scale.isFullscreen) {
+        this.scale.stopFullscreen();
+      } else {
+        this.scale.startFullscreen();
+      }
+    });
 
     // Initialize shop properties
     this.shopObjs = [];
