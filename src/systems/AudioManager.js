@@ -2,19 +2,19 @@
 // AudioManager – Procedural Web Audio API engine for Shadow Runner
 // ---------------------------------------------------------------------------
 // Zero audio files required. Every sound is synthesized at runtime using
-// oscillators, noise buffers, and envelopes. BGM is a generative loop that
-// responds to gameplay intensity (speed, fever, anomalies).
+// oscillators, noise buffers, and envelopes. Generative BGM is disabled by
+// default to play sound effects only, as requested by the user.
 //
-// Public API (backwards-compatible with the old Howler stub):
+// Public API:
 //   audio.muted            – boolean
 //   audio.play(name)       – trigger a named SFX
 //   audio.toggleMute()     – returns new muted state
 //   audio.playCoinCombo(n) – coin with rising pitch per combo
-//   audio.startBGM()       – begin generative background music
-//   audio.stopBGM()        – fade out and stop BGM
-//   audio.pauseBGM()       – pause BGM (game pause)
-//   audio.resumeBGM()      – resume BGM
-//   audio.updateBGM(speedNorm, feverActive, anomalyType) – per-frame update
+//   audio.startBGM()       – no-op (music removed)
+//   audio.stopBGM()        – no-op (music removed)
+//   audio.pauseBGM()       – no-op (music removed)
+//   audio.resumeBGM()      – no-op (music removed)
+//   audio.updateBGM(speedNorm, feverActive, anomalyType) – no-op (music removed)
 // ---------------------------------------------------------------------------
 
 class AudioManager {
@@ -28,27 +28,9 @@ class AudioManager {
     // Master gain nodes
     /** @type {GainNode|null} */
     this._masterSFX = null;
-    /** @type {GainNode|null} */
-    this._masterBGM = null;
-
-    // BGM state
-    this._bgmRunning = false;
-    this._bgmPaused = false;
-    this._bgmTimerId = null;
-    this._bgmNextTime = 0;
-    this._bgmStep = 0;
-    this._bgmTempo = 130; // BPM
-    this._bgmSpeedNorm = 0;
-    this._bgmFever = false;
-    this._bgmAnomaly = null;
-
-    // BGM filter nodes (created on demand)
-    /** @type {BiquadFilterNode|null} */
-    this._bgmLowpass = null;
 
     // Volume targets
-    this._SFX_VOL = 0.15;
-    this._BGM_VOL = 0.08;
+    this._SFX_VOL = 0.25; // Raised slightly to make SFX punchier
   }
 
   // -------------------------------------------------------------------------
@@ -64,17 +46,6 @@ class AudioManager {
       this._masterSFX = this.ctx.createGain();
       this._masterSFX.gain.value = this.muted ? 0 : this._SFX_VOL;
       this._masterSFX.connect(this.ctx.destination);
-
-      // Master BGM chain: BGM → lowpass → gain → destination
-      this._bgmLowpass = this.ctx.createBiquadFilter();
-      this._bgmLowpass.type = 'lowpass';
-      this._bgmLowpass.frequency.value = 20000; // wide open by default
-      this._bgmLowpass.Q.value = 1;
-
-      this._masterBGM = this.ctx.createGain();
-      this._masterBGM.gain.value = this.muted ? 0 : this._BGM_VOL;
-      this._masterBGM.connect(this._bgmLowpass);
-      this._bgmLowpass.connect(this.ctx.destination);
     } catch (e) {
       console.warn('[AudioManager] Web Audio API unavailable:', e);
       return null;
@@ -105,294 +76,430 @@ class AudioManager {
   }
 
   // -------------------------------------------------------------------------
-  // SFX generators
+  // Upgraded High-Fidelity SFX Generators
   // -------------------------------------------------------------------------
 
-  /** Jump – quick upward sine sweep 300→800 Hz over 80 ms */
+  /** Jump – Triangle pitch sweep with a highpass wind noise transient */
   _sfxJump() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
+
+    // 1. Core sweep (triangle wave for warmth)
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.exponentialRampToValueAtTime(750, t + 0.12);
 
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(300, t);
-    osc.frequency.exponentialRampToValueAtTime(800, t + 0.08);
+    gain.gain.setValueAtTime(0.4, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
 
-    gain.gain.setValueAtTime(0.6, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    // 2. Air thrust noise (puff of wind)
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer();
+    const noiseFilter = ctx.createBiquadFilter();
+    noiseFilter.type = 'bandpass';
+    noiseFilter.frequency.setValueAtTime(1200, t);
+    noiseFilter.frequency.exponentialRampToValueAtTime(400, t + 0.08);
+    noiseFilter.Q.value = 1.5;
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.25, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+
+    noise.connect(noiseFilter);
+    noiseFilter.connect(noiseGain);
+    noiseGain.connect(this._masterSFX);
 
     osc.connect(gain);
     gain.connect(this._masterSFX);
+
     osc.start(t);
-    osc.stop(t + 0.12);
+    osc.stop(t + 0.13);
+    noise.start(t);
+    noise.stop(t + 0.09);
   }
 
-  /** Slide – short downward sawtooth sweep 400→150 Hz over 100 ms */
+  /** Slide – Low rumble sweep layered with friction bandpass noise */
   _sfxSlide() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
+
+    // 1. Low rumble
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(70, t + 0.22);
+    gain.gain.setValueAtTime(0.3, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(400, t);
-    osc.frequency.exponentialRampToValueAtTime(150, t + 0.1);
+    // 2. Friction dust noise
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(700, t);
+    filter.frequency.exponentialRampToValueAtTime(250, t + 0.22);
+    filter.Q.value = 2.0;
 
-    gain.gain.setValueAtTime(0.35, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.28, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(this._masterSFX);
 
     osc.connect(gain);
     gain.connect(this._masterSFX);
+
     osc.start(t);
-    osc.stop(t + 0.15);
+    osc.stop(t + 0.26);
+    noise.start(t);
+    noise.stop(t + 0.26);
   }
 
-  /**
-   * Coin – musical chime at given frequency.
-   * @param {number} freq Base frequency (880 default)
-   */
+  /** Coin – Dual chime (perfect fifth arpeggio) + metallic transient tick */
   _sfxCoin(freq = 880) {
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    // Fundamental
+    // 1. Arpeggiating chimes: note 1 (freq) then note 2 (freq * 1.5 - perfect fifth)
     const osc1 = ctx.createOscillator();
-    osc1.type = 'sine';
-    osc1.frequency.value = freq;
-
-    // Harmonic overtone for sparkle
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'sine';
-    osc2.frequency.value = freq * 2.5;
-
     const gain1 = ctx.createGain();
-    gain1.gain.setValueAtTime(0.5, t);
-    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    osc1.type = 'triangle';
+    osc1.frequency.setValueAtTime(freq, t);
+    gain1.gain.setValueAtTime(0.35, t);
+    gain1.gain.setValueAtTime(0.35, t + 0.04);
+    gain1.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
 
+    const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
-    gain2.gain.setValueAtTime(0.15, t);
-    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(freq * 1.498, t + 0.04);
+    gain2.gain.setValueAtTime(0, t);
+    gain2.gain.setValueAtTime(0.25, t + 0.04);
+    gain2.gain.exponentialRampToValueAtTime(0.001, t + 0.22);
+
+    // 3. Metallic strike tick transient
+    const tick = ctx.createOscillator();
+    const tickGain = ctx.createGain();
+    tick.type = 'sine';
+    tick.frequency.setValueAtTime(freq * 3.5, t);
+    tickGain.gain.setValueAtTime(0.2, t);
+    tickGain.gain.exponentialRampToValueAtTime(0.001, t + 0.015);
 
     osc1.connect(gain1);
     osc2.connect(gain2);
+    tick.connect(tickGain);
+
     gain1.connect(this._masterSFX);
     gain2.connect(this._masterSFX);
+    tickGain.connect(this._masterSFX);
 
     osc1.start(t);
-    osc2.start(t);
-    osc1.stop(t + 0.18);
-    osc2.stop(t + 0.15);
+    osc2.start(t + 0.04);
+    tick.start(t);
+
+    osc1.stop(t + 0.2);
+    osc2.stop(t + 0.25);
+    tick.stop(t + 0.02);
   }
 
-  /** Hit – harsh white noise burst through bandpass, 100 ms */
+  /** Hit – Harsh square-wave dive crash + heavy low-pass noise explosion */
   _sfxHit() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    const src = ctx.createBufferSource();
-    src.buffer = this._noiseBuffer();
+    // 1. Low frequency rumble dive (square wave + envelope)
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.exponentialRampToValueAtTime(30, t + 0.4);
 
-    const bp = ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 1800;
-    bp.Q.value = 2.5;
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.7, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
-
-    // Slight distortion via waveshaper for extra harshness
-    const ws = ctx.createWaveShaper();
+    // Distortion
+    const shaper = ctx.createWaveShaper();
     const curve = new Float32Array(256);
     for (let i = 0; i < 256; i++) {
       const x = (i / 128) - 1;
       curve[i] = (Math.PI + 3) * x / (Math.PI + 3 * Math.abs(x));
     }
-    ws.curve = curve;
+    shaper.curve = curve;
 
-    src.connect(bp);
-    bp.connect(ws);
-    ws.connect(gain);
-    gain.connect(this._masterSFX);
-    src.start(t);
-    src.stop(t + 0.12);
+    oscGain.gain.setValueAtTime(0.6, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
+
+    osc.connect(shaper);
+    shaper.connect(oscGain);
+    oscGain.connect(this._masterSFX);
+
+    // 2. Heavy noise explosion
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer();
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(800, t);
+    lp.frequency.exponentialRampToValueAtTime(40, t + 0.35);
+
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.7, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+
+    noise.connect(lp);
+    lp.connect(noiseGain);
+    noiseGain.connect(this._masterSFX);
+
+    osc.start(t);
+    osc.stop(t + 0.5);
+    noise.start(t);
+    noise.stop(t + 0.42);
   }
 
-  /** Sync – rising power chord (two detuned sines sweeping up, 200 ms) */
+  /** Sync – Resonant saw-chord sweep (E-major triad) with 12 Hz vibrato */
   _sfxSync() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    const makeOsc = (detuneCents) => {
-      const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(220, t);
-      osc.frequency.exponentialRampToValueAtTime(660, t + 0.2);
-      osc.detune.value = detuneCents;
-      return osc;
-    };
-
-    const osc1 = makeOsc(-15);
-    const osc2 = makeOsc(15);
-
-    // Third oscillator for "fifth" harmony
-    const osc3 = ctx.createOscillator();
-    osc3.type = 'sine';
-    osc3.frequency.setValueAtTime(330, t);
-    osc3.frequency.exponentialRampToValueAtTime(990, t + 0.2);
-
+    const freqs = [329.63, 415.30, 493.88]; // E4, G#4, B4
+    const oscs = [];
     const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.35, t);
-    gain.gain.setValueAtTime(0.35, t + 0.15);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
-    osc1.connect(gain);
-    osc2.connect(gain);
-    osc3.connect(gain);
-    gain.connect(this._masterSFX);
+    // 12Hz Vibrato LFO
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 12;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 6;
 
-    osc1.start(t);
-    osc2.start(t);
-    osc3.start(t);
-    osc1.stop(t + 0.28);
-    osc2.stop(t + 0.28);
-    osc3.stop(t + 0.28);
+    lfo.connect(lfoGain);
+
+    freqs.forEach((f) => {
+      const osc = ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 1.5, t + 0.25);
+      lfoGain.connect(osc.frequency);
+      osc.connect(gain);
+      oscs.push(osc);
+    });
+
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(800, t);
+    filter.frequency.exponentialRampToValueAtTime(3200, t + 0.25);
+    filter.Q.value = 3.5;
+
+    gain.gain.setValueAtTime(0.28, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+
+    gain.connect(filter);
+    filter.connect(this._masterSFX);
+
+    lfo.start(t);
+    oscs.forEach(o => o.start(t));
+    
+    lfo.stop(t + 0.3);
+    oscs.forEach(o => o.stop(t + 0.3));
   }
 
-  /** Freeze – crystalline shimmer (high sine + LFO tremolo, 300 ms) */
+  /** Freeze – High icy 4-note chime arpeggio + highpass crackle noise */
   _sfxFreeze() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
 
-    // Main tone – high glassy sine
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(2400, t);
-    osc.frequency.exponentialRampToValueAtTime(1800, t + 0.3);
+    const notes = [987.77, 1318.51, 1567.98, 1975.53]; // B5, E6, G6, B6
+    
+    notes.forEach((freq, idx) => {
+      const delay = idx * 0.035;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    // Shimmer overtone
-    const osc2 = ctx.createOscillator();
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(3600, t);
-    osc2.frequency.exponentialRampToValueAtTime(2700, t + 0.3);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t + delay);
 
-    // LFO for tremolo
-    const lfo = ctx.createOscillator();
-    lfo.type = 'sine';
-    lfo.frequency.value = 18; // 18 Hz tremolo
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.setValueAtTime(0.22, t + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.2);
 
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.3; // depth
+      osc.connect(gain);
+      gain.connect(this._masterSFX);
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.4, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.start(t + delay);
+      osc.stop(t + delay + 0.22);
+    });
 
-    // LFO → gain.gain (AM tremolo)
-    lfo.connect(lfoGain);
-    lfoGain.connect(gain.gain);
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer();
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'highpass';
+    filter.frequency.setValueAtTime(5000, t);
 
-    osc.connect(gain);
-    osc2.connect(gain);
-    gain.connect(this._masterSFX);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.18, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
 
-    lfo.start(t);
-    osc.start(t);
-    osc2.start(t);
-    lfo.stop(t + 0.35);
-    osc.stop(t + 0.38);
-    osc2.stop(t + 0.38);
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    noiseGain.connect(this._masterSFX);
+
+    noise.start(t);
+    noise.stop(t + 0.26);
   }
 
-  /** Boost – hyper-speed rocket boost sweep */
+  /** Boost – FM warp engine pitch lift (Carrier + Modulator) */
   _sfxBoost() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
-    const osc = ctx.createOscillator();
+
+    const carrier = ctx.createOscillator();
+    const modulator = ctx.createOscillator();
+    const modGain = ctx.createGain();
     const gain = ctx.createGain();
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(150, t);
-    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.35);
 
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(200, t);
-    filter.frequency.exponentialRampToValueAtTime(2500, t + 0.35);
-    filter.Q.value = 3.0;
+    carrier.type = 'sawtooth';
+    carrier.frequency.setValueAtTime(160, t);
+    carrier.frequency.exponentialRampToValueAtTime(1400, t + 0.4);
 
-    gain.gain.setValueAtTime(0.3, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    modulator.type = 'sine';
+    modulator.frequency.setValueAtTime(90, t);
+    modulator.frequency.linearRampToValueAtTime(280, t + 0.4);
 
-    osc.connect(filter);
-    filter.connect(gain);
-    gain.connect(this._masterSFX);
+    modGain.gain.setValueAtTime(80, t);
+    modGain.gain.linearRampToValueAtTime(350, t + 0.4);
 
-    osc.start(t);
-    osc.stop(t + 0.42);
-  }
-
-  /** Crumble – low crunching noise for crumbling ground */
-  _sfxCrumble() {
-    const ctx = this.ctx;
-    const t = ctx.currentTime;
-    const src = ctx.createBufferSource();
-    src.buffer = this._noiseBuffer();
+    modulator.connect(modGain);
+    modGain.connect(carrier.frequency);
 
     const lp = ctx.createBiquadFilter();
     lp.type = 'lowpass';
     lp.frequency.setValueAtTime(400, t);
-    lp.frequency.exponentialRampToValueAtTime(80, t + 0.25);
+    lp.frequency.exponentialRampToValueAtTime(3000, t + 0.4);
+    lp.Q.value = 2.5;
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.6, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.28);
+    gain.gain.setValueAtTime(0.32, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.45);
 
-    src.connect(lp);
+    carrier.connect(lp);
     lp.connect(gain);
     gain.connect(this._masterSFX);
 
-    src.start(t);
-    src.stop(t + 0.3);
+    carrier.start(t);
+    modulator.start(t);
+    carrier.stop(t + 0.46);
+    modulator.stop(t + 0.46);
   }
 
-  /** Drone – science-fiction alarm chirp for drone hazards */
+  /** Crumble – Staggered gravel cracks + low-frequency rumble */
+  _sfxCrumble() {
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+
+    for (let i = 0; i < 4; i++) {
+      const delay = i * 0.06;
+      const src = ctx.createBufferSource();
+      src.buffer = this._noiseBuffer();
+
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 200 + Math.random() * 250;
+      bp.Q.value = 3.0;
+
+      const gain = ctx.createGain();
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.setValueAtTime(0.42, t + delay);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.08);
+
+      src.connect(bp);
+      bp.connect(gain);
+      gain.connect(this._masterSFX);
+
+      src.start(t + delay);
+      src.stop(t + delay + 0.1);
+    }
+
+    const rumble = ctx.createOscillator();
+    const rumbleGain = ctx.createGain();
+    rumble.type = 'sine';
+    rumble.frequency.setValueAtTime(65, t);
+    rumbleGain.gain.setValueAtTime(0.35, t);
+    rumbleGain.gain.exponentialRampToValueAtTime(0.001, t + 0.32);
+
+    rumble.connect(rumbleGain);
+    rumbleGain.connect(this._masterSFX);
+    rumble.start(t);
+    rumble.stop(t + 0.33);
+  }
+
+  /** Drone – Cybernetic oscillation sweep + 24 Hz vibrato alarm */
   _sfxDrone() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
+
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(800, t);
-    osc.frequency.linearRampToValueAtTime(300, t + 0.15);
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(950, t);
+    osc.frequency.exponentialRampToValueAtTime(280, t + 0.18);
 
-    gain.gain.setValueAtTime(0.25, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    const lfo = ctx.createOscillator();
+    lfo.type = 'sine';
+    lfo.frequency.value = 24;
+    const lfoGain = ctx.createGain();
+    lfoGain.gain.value = 40;
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(osc.frequency);
+
+    gain.gain.setValueAtTime(0.24, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
 
     osc.connect(gain);
     gain.connect(this._masterSFX);
+
+    lfo.start(t);
     osc.start(t);
-    osc.stop(t + 0.2);
+    lfo.stop(t + 0.21);
+    osc.stop(t + 0.21);
   }
 
-  /** Double Jump – high sweep chime for mid-air jump */
+  /** Double Jump – High crystal chime strike arpeggiating upward */
   _sfxDoubleJump() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
+
+    // 1. Crystal chime strike (high transient)
+    const chime = ctx.createOscillator();
+    const chimeGain = ctx.createGain();
+    chime.type = 'sine';
+    chime.frequency.setValueAtTime(1100, t);
+    chime.frequency.setValueAtTime(1400, t + 0.02);
+    chimeGain.gain.setValueAtTime(0.35, t);
+    chimeGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+
+    chime.connect(chimeGain);
+    chimeGain.connect(this._masterSFX);
+    chime.start(t);
+    chime.stop(t + 0.07);
+
+    // 2. Detuned rising waves
     const osc1 = ctx.createOscillator();
     const osc2 = ctx.createOscillator();
     const gain = ctx.createGain();
 
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(500, t);
-    osc1.frequency.exponentialRampToValueAtTime(1200, t + 0.08);
+    osc1.frequency.setValueAtTime(523.25, t); // C5
+    osc1.frequency.exponentialRampToValueAtTime(1396.91, t + 0.16); // F6
+    osc1.detune.value = -8;
 
-    osc2.type = 'sine';
-    osc2.frequency.setValueAtTime(600, t);
-    osc2.frequency.exponentialRampToValueAtTime(1440, t + 0.08);
+    osc2.type = 'triangle';
+    osc2.frequency.setValueAtTime(523.25, t);
+    osc2.frequency.exponentialRampToValueAtTime(1396.91, t + 0.16);
+    osc2.detune.value = 8;
 
-    gain.gain.setValueAtTime(0.4, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    gain.gain.setValueAtTime(0.35, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
 
     osc1.connect(gain);
     osc2.connect(gain);
@@ -400,33 +507,49 @@ class AudioManager {
 
     osc1.start(t);
     osc2.start(t);
-    osc1.stop(t + 0.12);
-    osc2.stop(t + 0.12);
+    osc1.stop(t + 0.2);
+    osc2.stop(t + 0.2);
   }
 
-  /** Dash – white noise whoosh sweep */
+  /** Dash – Resonant sci-fi whoosh (Q-swept noise) + low sawtooth sweep */
   _sfxDash() {
     const ctx = this.ctx;
     const t = ctx.currentTime;
-    const src = ctx.createBufferSource();
-    src.buffer = this._noiseBuffer();
 
-    const filter = ctx.createBiquadFilter();
-    filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(300, t);
-    filter.frequency.exponentialRampToValueAtTime(3000, t + 0.15);
-    filter.Q.value = 2.0;
+    // 1. High-speed rocket whoosh (bandpass swept noise)
+    const noise = ctx.createBufferSource();
+    noise.buffer = this._noiseBuffer();
+    const bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(2600, t);
+    bp.frequency.exponentialRampToValueAtTime(500, t + 0.22);
+    bp.Q.value = 4.5; // Resonant phase-like sound
 
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.5, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.5, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
 
-    src.connect(filter);
-    filter.connect(gain);
-    gain.connect(this._masterSFX);
+    noise.connect(bp);
+    bp.connect(noiseGain);
+    noiseGain.connect(this._masterSFX);
 
-    src.start(t);
-    src.stop(t + 0.2);
+    // 2. Heavy engine punch (low sawtooth sweep)
+    const osc = ctx.createOscillator();
+    const oscGain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(320, t);
+    osc.frequency.exponentialRampToValueAtTime(90, t + 0.18);
+
+    oscGain.gain.setValueAtTime(0.4, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+
+    osc.connect(oscGain);
+    oscGain.connect(this._masterSFX);
+
+    noise.start(t);
+    noise.stop(t + 0.25);
+    osc.start(t);
+    osc.stop(t + 0.22);
   }
 
   // -------------------------------------------------------------------------
@@ -468,7 +591,7 @@ class AudioManager {
     if (!this._ensureContext()) return;
     this._resume();
 
-    const clampedCombo = Math.min(combo, 12); // cap at an octave + some
+    const clampedCombo = Math.min(combo, 12); // cap at an octave + minor third
     const freq = 880 * Math.pow(1.189207, clampedCombo - 1); // minor 3rd steps
     this._sfxCoin(freq);
   }
@@ -486,287 +609,32 @@ class AudioManager {
         this._masterSFX.gain.cancelScheduledValues(now);
         this._masterSFX.gain.setValueAtTime(this.muted ? 0 : this._SFX_VOL, now);
       }
-      if (this._masterBGM) {
-        this._masterBGM.gain.cancelScheduledValues(now);
-        this._masterBGM.gain.setValueAtTime(this.muted ? 0 : this._BGM_VOL, now);
-      }
     }
     return this.muted;
   }
 
   // =========================================================================
-  // Dynamic BGM system – lo-fi / synthwave generative loop
+  // BGM Methods - Disabled / Stubbed out for sound-effects only gameplay
   // =========================================================================
 
-  // Musical scale: C minor pentatonic across 2 octaves (MIDI → Hz)
-  static _SCALE = [
-    130.81, 155.56, 174.61, 196.00, 233.08,   // C3 Eb3 F3 G3 Bb3
-    261.63, 311.13, 349.23, 392.00, 466.16,   // C4 Eb4 F4 G4 Bb4
-  ];
-
-  // Bass pattern (index into _SCALE) – 16-step, repeats
-  static _BASS_PATTERN = [0, 0, 2, 2, 3, 3, 4, 4, 0, 0, 5, 5, 3, 3, 2, 2];
-
-  // Arpeggio pattern for fever mode (index into _SCALE)
-  static _ARP_PATTERN = [5, 7, 8, 9, 8, 7, 5, 4, 5, 6, 7, 8, 9, 8, 7, 6];
-
-  /** Start the generative BGM loop. */
   startBGM() {
-    if (!this._ensureContext()) return;
-    this._resume();
-
-    if (this._bgmRunning) return;
-    this._bgmRunning = true;
-    this._bgmPaused = false;
-    this._bgmStep = 0;
-    this._bgmNextTime = this.ctx.currentTime + 0.05; // tiny lead-in
-    this._bgmSpeedNorm = 0;
-    this._bgmFever = false;
-    this._bgmAnomaly = null;
-
-    this._scheduleBGM();
+    // Generative BGM loop disabled
   }
 
-  /** Stop BGM with a short fade-out. */
   stopBGM() {
-    if (!this._bgmRunning) return;
-    this._bgmRunning = false;
-
-    if (this._bgmTimerId) {
-      clearTimeout(this._bgmTimerId);
-      this._bgmTimerId = null;
-    }
-
-    // Fade out
-    if (this.ctx && this._masterBGM) {
-      const now = this.ctx.currentTime;
-      this._masterBGM.gain.cancelScheduledValues(now);
-      this._masterBGM.gain.setValueAtTime(this._masterBGM.gain.value, now);
-      this._masterBGM.gain.linearRampToValueAtTime(0, now + 0.5);
-
-      // Restore after fade
-      setTimeout(() => {
-        if (this._masterBGM && !this._bgmRunning) {
-          this._masterBGM.gain.value = this.muted ? 0 : this._BGM_VOL;
-        }
-      }, 600);
-    }
+    // Generative BGM loop disabled
   }
 
-  /** Pause BGM (for game pause). */
   pauseBGM() {
-    if (!this._bgmRunning || this._bgmPaused) return;
-    this._bgmPaused = true;
-    if (this._bgmTimerId) {
-      clearTimeout(this._bgmTimerId);
-      this._bgmTimerId = null;
-    }
+    // Generative BGM loop disabled
   }
 
-  /** Resume BGM after pause. */
   resumeBGM() {
-    if (!this._bgmRunning || !this._bgmPaused) return;
-    this._bgmPaused = false;
-    this._resume();
-    this._bgmNextTime = this.ctx.currentTime + 0.05;
-    this._scheduleBGM();
+    // Generative BGM loop disabled
   }
 
-  /**
-   * Update BGM parameters each frame.
-   * @param {number} speedNorm  Normalized speed 0-1
-   * @param {boolean} feverActive  Whether fever mode is active
-   * @param {string|null} anomalyType  Current anomaly type or null
-   */
   updateBGM(speedNorm = 0, feverActive = false, anomalyType = null) {
-    this._bgmSpeedNorm = Math.max(0, Math.min(1, speedNorm));
-    this._bgmFever = feverActive;
-    this._bgmAnomaly = anomalyType;
-
-    // Dynamic tempo: 130 base, up to 155 at max speed
-    this._bgmTempo = 130 + this._bgmSpeedNorm * 25;
-
-    // Lowpass filter for fog_of_war anomaly
-    if (this._bgmLowpass && this.ctx) {
-      const now = this.ctx.currentTime;
-      if (anomalyType === 'fog_of_war') {
-        this._bgmLowpass.frequency.setTargetAtTime(600, now, 0.1);
-      } else {
-        this._bgmLowpass.frequency.setTargetAtTime(20000, now, 0.1);
-      }
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // BGM scheduling internals
-  // -----------------------------------------------------------------------
-
-  /** Schedule ahead pattern to keep the audio buffer full. */
-  _scheduleBGM() {
-    if (!this._bgmRunning || this._bgmPaused) return;
-
-    const LOOK_AHEAD = 0.15; // seconds to schedule ahead
-    const SCHEDULE_INTERVAL = 80; // ms between scheduler calls
-
-    while (this._bgmNextTime < this.ctx.currentTime + LOOK_AHEAD) {
-      const stepTime = this._bgmNextTime;
-      const step = this._bgmStep % 16;
-      const secondsPerStep = 60 / this._bgmTempo / 4; // 16th notes
-
-      // --- Kick drum on beats 0, 4, 8, 12 ---
-      if (step % 4 === 0) {
-        this._bgmKick(stepTime);
-      }
-
-      // --- Bass note ---
-      if (step % 2 === 0) {
-        const patIdx = this._bgmFever
-          ? AudioManager._ARP_PATTERN[step]
-          : AudioManager._BASS_PATTERN[step];
-        const freq = AudioManager._SCALE[patIdx] || 130.81;
-        if (this._bgmFever) {
-          this._bgmArp(stepTime, freq);
-        } else {
-          this._bgmBass(stepTime, freq);
-        }
-      }
-
-      // --- Hi-hat when speed > 0.5 ---
-      if (this._bgmSpeedNorm > 0.5) {
-        this._bgmHiHat(stepTime);
-      }
-
-      // --- Warp speed stutter/glitch effect ---
-      if (this._bgmAnomaly === 'warp_speed' && step % 3 === 0) {
-        this._bgmGlitch(stepTime);
-      }
-
-      this._bgmNextTime += secondsPerStep;
-      this._bgmStep++;
-    }
-
-    this._bgmTimerId = setTimeout(() => this._scheduleBGM(), SCHEDULE_INTERVAL);
-  }
-
-  /** Kick drum – sine burst at 60 Hz with pitch drop. */
-  _bgmKick(time) {
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(150, time);
-    osc.frequency.exponentialRampToValueAtTime(60, time + 0.04);
-
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.8, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.12);
-
-    osc.connect(gain);
-    gain.connect(this._masterBGM);
-    osc.start(time);
-    osc.stop(time + 0.15);
-  }
-
-  /**
-   * Bass note – triangle wave, short envelope.
-   * @param {number} time Scheduled time
-   * @param {number} freq Frequency
-   */
-  _bgmBass(time, freq) {
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-
-    const gain = ctx.createGain();
-    const dur = 60 / this._bgmTempo / 4 * 1.5; // slightly legato
-    gain.gain.setValueAtTime(0.5, time);
-    gain.gain.setValueAtTime(0.5, time + dur * 0.6);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-
-    osc.connect(gain);
-    gain.connect(this._masterBGM);
-    osc.start(time);
-    osc.stop(time + dur + 0.01);
-  }
-
-  /**
-   * Fever arpeggio – bright square-ish tone.
-   * @param {number} time Scheduled time
-   * @param {number} freq Frequency
-   */
-  _bgmArp(time, freq) {
-    const ctx = this.ctx;
-    const osc = ctx.createOscillator();
-    osc.type = 'square';
-    osc.frequency.value = freq * 2; // up an octave for brightness
-
-    // Soften the square wave with a lowpass
-    const lp = ctx.createBiquadFilter();
-    lp.type = 'lowpass';
-    lp.frequency.value = 3000;
-
-    const gain = ctx.createGain();
-    const dur = 60 / this._bgmTempo / 4 * 0.7; // staccato
-    gain.gain.setValueAtTime(0.3, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + dur);
-
-    osc.connect(lp);
-    lp.connect(gain);
-    gain.connect(this._masterBGM);
-    osc.start(time);
-    osc.stop(time + dur + 0.01);
-  }
-
-  /** Hi-hat – short filtered noise burst. */
-  _bgmHiHat(time) {
-    const ctx = this.ctx;
-    const src = ctx.createBufferSource();
-    src.buffer = this._noiseBuffer();
-
-    const hp = ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 7000;
-
-    const gain = ctx.createGain();
-    // Volume scales with speed: louder as speedNorm approaches 1
-    const vol = 0.08 + (this._bgmSpeedNorm - 0.5) * 0.3;
-    gain.gain.setValueAtTime(Math.min(vol, 0.25), time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
-
-    src.connect(hp);
-    hp.connect(gain);
-    gain.connect(this._masterBGM);
-    src.start(time);
-    src.stop(time + 0.05);
-  }
-
-  /** Glitch/stutter – very short noise + pitch-bent sine for warp_speed. */
-  _bgmGlitch(time) {
-    const ctx = this.ctx;
-
-    // Noise crackle
-    const src = ctx.createBufferSource();
-    src.buffer = this._noiseBuffer();
-    const gain = ctx.createGain();
-    gain.gain.setValueAtTime(0.2, time);
-    gain.gain.exponentialRampToValueAtTime(0.001, time + 0.02);
-    src.connect(gain);
-    gain.connect(this._masterBGM);
-    src.start(time);
-    src.stop(time + 0.03);
-
-    // Pitch-bent blip
-    const osc = ctx.createOscillator();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(800, time);
-    osc.frequency.exponentialRampToValueAtTime(200, time + 0.03);
-    const g2 = ctx.createGain();
-    g2.gain.setValueAtTime(0.15, time);
-    g2.gain.exponentialRampToValueAtTime(0.001, time + 0.03);
-    osc.connect(g2);
-    g2.connect(this._masterBGM);
-    osc.start(time);
-    osc.stop(time + 0.05);
+    // Generative BGM loop disabled
   }
 }
 
