@@ -33,6 +33,29 @@ export default class BootScene extends Phaser.Scene {
     spark.generateTexture('spark', 16, 16);
     spark.destroy();
 
+    // Small square block texture for glitch trail.
+    const block = this.make.graphics({ x: 0, y: 0, add: false });
+    block.fillStyle(0xffffff, 1);
+    block.fillRect(0, 0, 8, 8);
+    block.generateTexture('block', 8, 8);
+    block.destroy();
+
+    // Dynamic monospace text textures for Matrix trail.
+    const t0 = this.make.text({
+      text: '0',
+      style: { font: 'bold 16px "JetBrains Mono", monospace', fill: '#ffffff' }
+    }, false);
+    this.textures.addCanvas('matrix_0', t0.canvas);
+
+    const t1 = this.make.text({
+      text: '1',
+      style: { font: 'bold 16px "JetBrains Mono", monospace', fill: '#ffffff' }
+    }, false);
+    this.textures.addCanvas('matrix_1', t1.canvas);
+
+    t0.destroy();
+    t1.destroy();
+
     // Remove the CSS loading screen.
     const loader = document.getElementById('loader');
     if (loader) {

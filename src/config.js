@@ -74,20 +74,77 @@ export const COLORS = {
   // Character skins, unlocked when the player's BEST score reaches
 // `unlock`. Each skin defines runner colors per world.
 export const SKINS = [
-  { name: 'CLASSIC', unlock: 0, light: { body: 0x23233a, accent: 0xff5a5a }, dark: { body: 0xe9e7f4, accent: 0x59c2ff } },
-  { name: 'EMBER', unlock: 500, light: { body: 0x6b2d1f, accent: 0xffb347 }, dark: { body: 0xffd9a0, accent: 0xff5a3c } },
-  { name: 'TOXIC', unlock: 1000, light: { body: 0x1f4d2e, accent: 0x9dff57 }, dark: { body: 0xddffe2, accent: 0x2fe07a } },
-  { name: 'ROYAL', unlock: 2500, light: { body: 0x3a2a6b, accent: 0xffd34d }, dark: { body: 0xe6dcff, accent: 0xb98aff } },
-  { name: 'VOID', unlock: 5000, light: { body: 0x101014, accent: 0xff2fa0 }, dark: { body: 0xffffff, accent: 0x00e8ff } },
-  { name: 'CYBER', unlock: 'CHALLENGE', light: { body: 0x0a2b25, accent: 0x00ffcc }, dark: { body: 0x2e0a24, accent: 0xff00aa } },
+  { name: 'CLASSIC', unlock: 0, cost: 0, light: { body: 0x23233a, accent: 0xff5a5a }, dark: { body: 0xe9e7f4, accent: 0x59c2ff } },
+  { name: 'EMBER', unlock: 500, cost: 150, light: { body: 0x6b2d1f, accent: 0xffb347 }, dark: { body: 0xffd9a0, accent: 0xff5a3c } },
+  { name: 'TOXIC', unlock: 1000, cost: 300, light: { body: 0x1f4d2e, accent: 0x9dff57 }, dark: { body: 0xddffe2, accent: 0x2fe07a } },
+  { name: 'ROYAL', unlock: 2500, cost: 600, light: { body: 0x3a2a6b, accent: 0xffd34d }, dark: { body: 0xe6dcff, accent: 0xb98aff } },
+  { name: 'VOID', unlock: 5000, cost: 1000, light: { body: 0x101014, accent: 0xff2fa0 }, dark: { body: 0xffffff, accent: 0x00e8ff } },
+  { name: 'CYBER', unlock: 'CHALLENGE', cost: 1800, light: { body: 0x0a2b25, accent: 0x00ffcc }, dark: { body: 0x2e0a24, accent: 0xff00aa } },
 ];
 
 export const SKIN_KEY = 'shadow-runner-skin';
 export const CHALLENGE_UNLOCKED_KEY = 'shadow-runner-challenge-unlocked';
+export const PURCHASED_SKINS_KEY = 'shadow-runner-purchased-skins';
+
+export const TRAILS = [
+  { name: 'NEON', cost: 0, displayName: 'NEON ACCENT' },
+  { name: 'MATRIX', cost: 200, displayName: 'MATRIX CODE' },
+  { name: 'PLASMA', cost: 400, displayName: 'PLASMA STORM' },
+  { name: 'GOLDEN', cost: 750, displayName: 'GOLDEN SPARK' },
+  { name: 'GLITCH', cost: 1200, displayName: 'GLITCH BLOCK' },
+];
+
+export const TRAIL_KEY = 'shadow-runner-trail';
+export const PURCHASED_TRAILS_KEY = 'shadow-runner-purchased-trails';
 
 export function getSelectedSkin() {
   const i = Number(localStorage.getItem(SKIN_KEY) || 0);
   return SKINS[Math.min(Math.max(i, 0), SKINS.length - 1)];
+}
+
+export function isSkinUnlocked(index) {
+  if (index === 0) return true;
+  const skin = SKINS[index];
+  if (!skin) return false;
+  
+  // Check best score milestone
+  const bestScore = Number(localStorage.getItem(CFG.BEST_KEY) || 0);
+  if (typeof skin.unlock === 'number' && bestScore >= skin.unlock) {
+    return true;
+  }
+  
+  // Check challenge unlock
+  if (skin.unlock === 'CHALLENGE' && checkChallengeSkinUnlocked()) {
+    return true;
+  }
+  
+  // Check purchased skins
+  try {
+    const purchased = JSON.parse(localStorage.getItem(PURCHASED_SKINS_KEY) || '[]');
+    if (purchased.includes(skin.name)) {
+      return true;
+    }
+  } catch (e) {
+    // ignore
+  }
+  
+  return false;
+}
+
+export function getPurchasedTrails() {
+  try {
+    const purchased = JSON.parse(localStorage.getItem(PURCHASED_TRAILS_KEY) || '[]');
+    if (!purchased.includes('NEON')) {
+      purchased.unshift('NEON');
+    }
+    return purchased;
+  } catch (e) {
+    return ['NEON'];
+  }
+}
+
+export function getSelectedTrail() {
+  return localStorage.getItem(TRAIL_KEY) || 'NEON';
 }
 
 // The two stacked worlds. Readability relies on luminance contrast and

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CFG, WORLDS, SKINS, SKIN_KEY, getSelectedSkin, FONTS, COLORS, checkChallengeSkinUnlocked, getDailyChallenge } from '../config.js';
+import { CFG, WORLDS, SKINS, SKIN_KEY, getSelectedSkin, FONTS, COLORS, checkChallengeSkinUnlocked, getDailyChallenge, isSkinUnlocked, getPurchasedTrails, getSelectedTrail, TRAILS, TRAIL_KEY, PURCHASED_TRAILS_KEY, PURCHASED_SKINS_KEY } from '../config.js';
 import Runner from '../entities/Runner.js';
 import audio from '../systems/AudioManager.js';
 import { applyHiDpi, fadeTransition, drawGlassPanel } from '../systems/display.js';
@@ -285,27 +285,51 @@ export default class MenuScene extends Phaser.Scene {
     // ── Daily Challenge HUD ───────────────────────────────────
     this.buildDailyChallengeHUD(CFG.WIDTH - 120, 48);
 
-    // ── HOW TO PLAY — pill button ─────────────────────────────
+    // Initialize shop properties
+    this.shopObjs = [];
+    this.shopTab = 'SKINS';
+
+    // ── HOW TO PLAY & SHOP — pill buttons ──────────────────────
     const helpPill = this.add.graphics().setDepth(3);
     helpPill.lineStyle(1.5, COLORS.GOLD_HEX, 0.6);
-    helpPill.strokeRoundedRect(cx - 80, 404, 160, 28, 14);
+    helpPill.strokeRoundedRect(cx - 155, 404, 140, 28, 14);
 
     const helpBtn = this.add
-      .text(cx, 418, 'HOW TO PLAY', {
+      .text(cx - 85, 418, 'HOW TO PLAY', {
         fontFamily: FONTS.MONO,
-        fontSize: '13px',
+        fontSize: '12px',
         color: COLORS.GOLD,
       })
       .setOrigin(0.5)
       .setDepth(4)
       .setInteractive({ useHandCursor: true });
+    if (helpBtn.input) helpBtn.input.cursor = 'pointer';
     helpBtn.on('pointerdown', (pointer, lx, ly, event) => {
       event.stopPropagation();
       this.toggleHelp(true);
     });
 
-    // Fade in skins and help
-    [helpPill, helpBtn].forEach((el) => {
+    const shopPill = this.add.graphics().setDepth(3);
+    shopPill.lineStyle(1.5, COLORS.GOLD_HEX, 0.6);
+    shopPill.strokeRoundedRect(cx + 15, 404, 140, 28, 14);
+
+    const shopBtn = this.add
+      .text(cx + 85, 418, 'COIN SHOP', {
+        fontFamily: FONTS.MONO,
+        fontSize: '12px',
+        color: COLORS.GOLD,
+      })
+      .setOrigin(0.5)
+      .setDepth(4)
+      .setInteractive({ useHandCursor: true });
+    if (shopBtn.input) shopBtn.input.cursor = 'pointer';
+    shopBtn.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.openShop();
+    });
+
+    // Fade in skins and help/shop buttons
+    [helpPill, helpBtn, shopPill, shopBtn].forEach((el) => {
       el.setAlpha(0);
       this.tweens.add({ targets: el, alpha: 1, duration: 350, delay: 850 });
     });
@@ -347,7 +371,7 @@ export default class MenuScene extends Phaser.Scene {
 
     SKINS.forEach((s, i) => {
       const x = cx + (i - (SKINS.length - 1) / 2) * 58;
-      const unlocked = s.unlock === 'CHALLENGE' ? checkChallengeSkinUnlocked() : (best >= s.unlock);
+      const unlocked = isSkinUnlocked(i);
 
       // Golden selection ring
       if (i === selIdx) {
@@ -454,6 +478,367 @@ export default class MenuScene extends Phaser.Scene {
 
   toggleHelp(show) {
     this.helpObjs.forEach((o) => o.setVisible(show));
+  }
+
+  openShop() {
+    this.shopActive = true;
+    this.renderShop();
+  }
+
+  closeShop() {
+    this.shopActive = false;
+    this.clearShop();
+    this.scene.restart();
+  }
+
+  clearShop() {
+    if (this.shopObjs) {
+      this.shopObjs.forEach((o) => {
+        if (o && o.destroy) o.destroy();
+      });
+    }
+    this.shopObjs = [];
+  }
+
+  updateLiveRunners() {
+    if (this.runners) {
+      this.runners.forEach((r) => r.destroy());
+    }
+    const skin = getSelectedSkin();
+    this.runners = Object.values(WORLDS).map(
+      (def) =>
+        new Runner(this, 90, def.groundY, skin[def.key].body, skin[def.key].accent, def.runnerEye, skin.name)
+    );
+  }
+
+  renderShop() {
+    this.clearShop();
+
+    const cx = CFG.WIDTH / 2;
+    const cy = CFG.HEIGHT / 2;
+
+    const ov = this.add
+      .rectangle(cx, cy, CFG.WIDTH, CFG.HEIGHT, 0x000000, 0.82)
+      .setDepth(60)
+      .setInteractive();
+    ov.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      this.closeShop();
+    });
+    this.shopObjs.push(ov);
+
+    const panel = this.add.graphics().setDepth(61);
+    panel.fillStyle(0x0a0a14, 0.94);
+    panel.fillRoundedRect(cx - 280, 40, 560, 460, 16);
+    panel.lineStyle(1.5, COLORS.GOLD_HEX, 0.35);
+    panel.strokeRoundedRect(cx - 280, 40, 560, 460, 16);
+    this.shopObjs.push(panel);
+
+    const title = this.add.text(cx - 250, 68, 'COIN SHOP', {
+      fontFamily: FONTS.HEADING,
+      fontSize: '22px',
+      color: COLORS.GOLD,
+    }).setDepth(62);
+    this.shopObjs.push(title);
+
+    const coinsCount = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
+    const coinsLabel = this.add.text(cx + 250, 68, `\u25CF ${coinsCount} COINS`, {
+      fontFamily: FONTS.MONO,
+      fontSize: '14px',
+      color: COLORS.GOLD,
+    }).setOrigin(1, 0).setDepth(62);
+    this.shopObjs.push(coinsLabel);
+
+    const tabY = 115;
+
+    // SKINS Tab
+    const skinsTabColor = this.shopTab === 'SKINS' ? COLORS.GOLD : COLORS.TEXT_SECONDARY;
+    const skinsTab = this.add.text(cx - 80, tabY, 'SKINS', {
+      fontFamily: FONTS.HEADING,
+      fontSize: '16px',
+      color: skinsTabColor,
+    }).setOrigin(0.5).setDepth(62).setInteractive({ useHandCursor: true });
+    if (skinsTab.input) skinsTab.input.cursor = 'pointer';
+    skinsTab.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      if (this.shopTab !== 'SKINS') {
+        this.shopTab = 'SKINS';
+        this.renderShop();
+      }
+    });
+    this.shopObjs.push(skinsTab);
+
+    // TRAILS Tab
+    const trailsTabColor = this.shopTab === 'TRAILS' ? COLORS.GOLD : COLORS.TEXT_SECONDARY;
+    const trailsTab = this.add.text(cx + 80, tabY, 'TRAILS', {
+      fontFamily: FONTS.HEADING,
+      fontSize: '16px',
+      color: trailsTabColor,
+    }).setOrigin(0.5).setDepth(62).setInteractive({ useHandCursor: true });
+    if (trailsTab.input) trailsTab.input.cursor = 'pointer';
+    trailsTab.on('pointerdown', (pointer, lx, ly, event) => {
+      event.stopPropagation();
+      if (this.shopTab !== 'TRAILS') {
+        this.shopTab = 'TRAILS';
+        this.renderShop();
+      }
+    });
+    this.shopObjs.push(trailsTab);
+
+    const lineX = this.shopTab === 'SKINS' ? cx - 80 : cx + 80;
+    const underline = this.add.graphics().setDepth(62);
+    underline.lineStyle(2, COLORS.GOLD_HEX, 1.0);
+    underline.lineBetween(lineX - 35, tabY + 14, lineX + 35, tabY + 14);
+    this.shopObjs.push(underline);
+
+    if (this.shopTab === 'SKINS') {
+      SKINS.forEach((skin, index) => {
+        const col = index % 3;
+        const row = Math.floor(index / 3);
+        const bx = cx - 160 + col * 160;
+        const by = 195 + row * 130;
+
+        const box = this.add.graphics().setDepth(61);
+        box.fillStyle(0x121224, 0.5);
+        box.fillRoundedRect(bx - 70, by - 55, 140, 110, 10);
+        box.lineStyle(1, 0xffffff, 0.08);
+        box.strokeRoundedRect(bx - 70, by - 55, 140, 110, 10);
+        this.shopObjs.push(box);
+
+        const nameText = this.add.text(bx, by - 38, skin.name, {
+          fontFamily: FONTS.HEADING,
+          fontSize: '13px',
+          color: COLORS.TEXT_PRIMARY,
+        }).setOrigin(0.5).setDepth(62);
+        this.shopObjs.push(nameText);
+
+        const previewG = this.add.graphics().setDepth(62);
+        previewG.fillStyle(skin.light.body, 1);
+        previewG.fillCircle(bx - 18, by - 12, 7);
+        previewG.fillStyle(skin.light.accent, 1);
+        previewG.fillCircle(bx - 18 + 5, by - 12 + 5, 3.5);
+
+        previewG.fillStyle(skin.dark.body, 1);
+        previewG.fillCircle(bx + 18, by - 12, 7);
+        previewG.fillStyle(skin.dark.accent, 1);
+        previewG.fillCircle(bx + 18 - 5, by - 12 + 5, 3.5);
+        this.shopObjs.push(previewG);
+
+        const unlocked = isSkinUnlocked(index);
+        const selectedSkinIdx = Number(localStorage.getItem(SKIN_KEY) || 0);
+        const isEquipped = (selectedSkinIdx === index);
+
+        if (isEquipped) {
+          const statusLabel = this.add.text(bx, by + 28, 'EQUIPPED', {
+            fontFamily: FONTS.MONO,
+            fontSize: '10px',
+            color: COLORS.CYAN,
+          }).setOrigin(0.5).setDepth(62);
+          this.shopObjs.push(statusLabel);
+        } else if (unlocked) {
+          const equipBtnBg = this.add.graphics().setDepth(61);
+          equipBtnBg.fillStyle(0x222233, 0.8);
+          equipBtnBg.fillRoundedRect(bx - 50, by + 18, 100, 22, 6);
+          this.shopObjs.push(equipBtnBg);
+
+          const equipBtn = this.add.text(bx, by + 29, 'EQUIP', {
+            fontFamily: FONTS.MONO,
+            fontSize: '10px',
+            color: COLORS.TEXT_PRIMARY,
+          }).setOrigin(0.5).setDepth(62).setInteractive({ useHandCursor: true });
+          if (equipBtn.input) equipBtn.input.cursor = 'pointer';
+          equipBtn.on('pointerdown', (pointer, lx, ly, event) => {
+            event.stopPropagation();
+            localStorage.setItem(SKIN_KEY, String(index));
+            this.updateLiveRunners();
+            this.renderShop();
+          });
+          this.shopObjs.push(equipBtn);
+        } else {
+          const hasEnough = (coinsCount >= skin.cost);
+          const buyBtnBg = this.add.graphics().setDepth(61);
+          buyBtnBg.fillStyle(hasEnough ? 0xd4c8a0 : 0x22222c, 0.2);
+          buyBtnBg.fillRoundedRect(bx - 60, by + 18, 120, 22, 6);
+          buyBtnBg.lineStyle(1.5, hasEnough ? COLORS.GOLD_HEX : 0x444455, 0.6);
+          buyBtnBg.strokeRoundedRect(bx - 60, by + 18, 120, 22, 6);
+          this.shopObjs.push(buyBtnBg);
+
+          const priceText = this.add.text(bx, by + 29, `\u25CF ${skin.cost}`, {
+            fontFamily: FONTS.MONO,
+            fontSize: '9.5px',
+            color: hasEnough ? COLORS.GOLD : COLORS.TEXT_MUTED,
+          }).setOrigin(0.5).setDepth(62);
+          this.shopObjs.push(priceText);
+
+          const mileStr = skin.unlock === 'CHALLENGE' ? 'CHALLENGE' : `SCORE: ${skin.unlock}`;
+          const milestoneText = this.add.text(bx, by + 8, mileStr, {
+            fontFamily: FONTS.MONO,
+            fontSize: '8px',
+            color: COLORS.TEXT_MUTED,
+          }).setOrigin(0.5).setDepth(62);
+          this.shopObjs.push(milestoneText);
+
+          if (hasEnough) {
+            const buyHit = this.add.rectangle(bx, by + 29, 120, 22, 0xffffff, 0.001)
+              .setDepth(63)
+              .setInteractive({ useHandCursor: true });
+            if (buyHit.input) buyHit.input.cursor = 'pointer';
+            buyHit.on('pointerdown', (pointer, lx, ly, event) => {
+              event.stopPropagation();
+              const currentCoins = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
+              if (currentCoins >= skin.cost) {
+                localStorage.setItem(CFG.COINS_KEY, String(currentCoins - skin.cost));
+
+                let purchased = [];
+                try {
+                  purchased = JSON.parse(localStorage.getItem(PURCHASED_SKINS_KEY) || '[]');
+                } catch (e) {}
+                if (!purchased.includes(skin.name)) {
+                  purchased.push(skin.name);
+                }
+                localStorage.setItem(PURCHASED_SKINS_KEY, JSON.stringify(purchased));
+
+                localStorage.setItem(SKIN_KEY, String(index));
+                this.updateLiveRunners();
+                this.renderShop();
+              }
+            });
+            this.shopObjs.push(buyHit);
+          }
+        }
+      });
+    } else {
+      TRAILS.forEach((trail, index) => {
+        const isRow2 = index >= 3;
+        const bx = isRow2 
+          ? (index === 3 ? cx - 80 : cx + 80)
+          : (cx - 160 + index * 160);
+        const by = isRow2 ? 325 : 195;
+
+        const box = this.add.graphics().setDepth(61);
+        box.fillStyle(0x121224, 0.5);
+        box.fillRoundedRect(bx - 70, by - 55, 140, 110, 10);
+        box.lineStyle(1, 0xffffff, 0.08);
+        box.strokeRoundedRect(bx - 70, by - 55, 140, 110, 10);
+        this.shopObjs.push(box);
+
+        const nameText = this.add.text(bx, by - 38, trail.displayName, {
+          fontFamily: FONTS.HEADING,
+          fontSize: '11px',
+          color: COLORS.TEXT_PRIMARY,
+        }).setOrigin(0.5).setDepth(62);
+        this.shopObjs.push(nameText);
+
+        let descStr = '';
+        switch (trail.name) {
+          case 'NEON':
+            descStr = 'Original accent';
+            break;
+          case 'MATRIX':
+            descStr = 'Falling binary';
+            break;
+          case 'PLASMA':
+            descStr = 'Energy exhaust';
+            break;
+          case 'GOLDEN':
+            descStr = 'Gravity sparks';
+            break;
+          case 'GLITCH':
+            descStr = 'Glitch blocks';
+            break;
+        }
+
+        const descText = this.add.text(bx, by - 12, descStr, {
+          fontFamily: FONTS.MONO,
+          fontSize: '9px',
+          color: COLORS.TEXT_SECONDARY,
+        }).setOrigin(0.5).setDepth(62);
+        this.shopObjs.push(descText);
+
+        const purchasedTrails = getPurchasedTrails();
+        const unlocked = purchasedTrails.includes(trail.name);
+        const selectedTrail = getSelectedTrail();
+        const isEquipped = (selectedTrail === trail.name);
+
+        if (isEquipped) {
+          const statusLabel = this.add.text(bx, by + 25, 'EQUIPPED', {
+            fontFamily: FONTS.MONO,
+            fontSize: '10px',
+            color: COLORS.CYAN,
+          }).setOrigin(0.5).setDepth(62);
+          this.shopObjs.push(statusLabel);
+        } else if (unlocked) {
+          const equipBtnBg = this.add.graphics().setDepth(61);
+          equipBtnBg.fillStyle(0x222233, 0.8);
+          equipBtnBg.fillRoundedRect(bx - 50, by + 15, 100, 22, 6);
+          this.shopObjs.push(equipBtnBg);
+
+          const equipBtn = this.add.text(bx, by + 26, 'EQUIP', {
+            fontFamily: FONTS.MONO,
+            fontSize: '10px',
+            color: COLORS.TEXT_PRIMARY,
+          }).setOrigin(0.5).setDepth(62).setInteractive({ useHandCursor: true });
+          if (equipBtn.input) equipBtn.input.cursor = 'pointer';
+          equipBtn.on('pointerdown', (pointer, lx, ly, event) => {
+            event.stopPropagation();
+            localStorage.setItem(TRAIL_KEY, trail.name);
+            this.updateLiveRunners();
+            this.renderShop();
+          });
+          this.shopObjs.push(equipBtn);
+        } else {
+          const hasEnough = (coinsCount >= trail.cost);
+          const buyBtnBg = this.add.graphics().setDepth(61);
+          buyBtnBg.fillStyle(hasEnough ? 0xd4c8a0 : 0x22222c, 0.2);
+          buyBtnBg.fillRoundedRect(bx - 60, by + 15, 120, 22, 6);
+          buyBtnBg.lineStyle(1.5, hasEnough ? COLORS.GOLD_HEX : 0x444455, 0.6);
+          buyBtnBg.strokeRoundedRect(bx - 60, by + 15, 120, 22, 6);
+          this.shopObjs.push(buyBtnBg);
+
+          const priceText = this.add.text(bx, by + 26, `\u25CF ${trail.cost}`, {
+            fontFamily: FONTS.MONO,
+            fontSize: '9.5px',
+            color: hasEnough ? COLORS.GOLD : COLORS.TEXT_MUTED,
+          }).setOrigin(0.5).setDepth(62);
+          this.shopObjs.push(priceText);
+
+          if (hasEnough) {
+            const buyHit = this.add.rectangle(bx, by + 26, 120, 22, 0xffffff, 0.001)
+              .setDepth(63)
+              .setInteractive({ useHandCursor: true });
+            if (buyHit.input) buyHit.input.cursor = 'pointer';
+            buyHit.on('pointerdown', (pointer, lx, ly, event) => {
+              event.stopPropagation();
+              const currentCoins = Number(localStorage.getItem(CFG.COINS_KEY) || 0);
+              if (currentCoins >= trail.cost) {
+                localStorage.setItem(CFG.COINS_KEY, String(currentCoins - trail.cost));
+
+                let purchased = [];
+                try {
+                  purchased = JSON.parse(localStorage.getItem(PURCHASED_TRAILS_KEY) || '[]');
+                } catch (e) {}
+                if (!purchased.includes(trail.name)) {
+                  purchased.push(trail.name);
+                }
+                localStorage.setItem(PURCHASED_TRAILS_KEY, JSON.stringify(purchased));
+
+                localStorage.setItem(TRAIL_KEY, trail.name);
+                this.updateLiveRunners();
+                this.renderShop();
+              }
+            });
+            this.shopObjs.push(buyHit);
+          }
+        }
+      });
+    }
+
+    const tipText = this.add.text(cx, 475, 'TAP OUTSIDE PANEL TO CLOSE', {
+      fontFamily: FONTS.MONO,
+      fontSize: '9.5px',
+      color: COLORS.TEXT_MUTED,
+    }).setOrigin(0.5).setDepth(62);
+    this.shopObjs.push(tipText);
   }
 
   buildDailyChallengeHUD(cx, y) {

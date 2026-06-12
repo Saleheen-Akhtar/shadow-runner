@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { CFG } from '../config.js';
+import { CFG, getSelectedTrail } from '../config.js';
 
 // An animated humanoid runner built from primitives: head with eye,
 // torso, two arms, two legs, a flowing headband tail, and a skin-specific
@@ -300,6 +300,8 @@ export default class Runner {
   }
 
   getTrailConfig(skinName, accentColor) {
+    const activeTrail = getSelectedTrail();
+
     const base = {
       lifespan: 400,
       scale: { start: 0.6, end: 0 },
@@ -308,6 +310,64 @@ export default class Runner {
       emitting: true,
       frequency: 40,
     };
+
+    if (activeTrail !== 'NEON') {
+      switch (activeTrail) {
+        case 'MATRIX':
+          return {
+            ...base,
+            texture: ['matrix_0', 'matrix_1'],
+            lifespan: 800,
+            speedX: { min: -140, max: -80 },
+            speedY: { min: -10, max: 10 },
+            scale: { start: 1.0, end: 0.6 },
+            alpha: { start: 0.9, end: 0 },
+            tint: 0x00ff00,
+            frequency: 40,
+            blendMode: 'NORMAL',
+          };
+        case 'PLASMA':
+          return {
+            ...base,
+            texture: 'glow',
+            lifespan: 350,
+            speedX: { min: -250, max: -120 },
+            speedY: { min: -30, max: 30 },
+            scale: { start: 0.18, end: 0.02 },
+            alpha: { start: 0.8, end: 0 },
+            tint: 0xff00ff,
+            frequency: 15,
+            blendMode: 'ADD',
+          };
+        case 'GOLDEN':
+          return {
+            ...base,
+            texture: 'spark',
+            lifespan: 600,
+            speedX: { min: -120, max: -60 },
+            speedY: { min: -40, max: 10 },
+            gravityY: 400,
+            scale: { start: 0.8, end: 0.1 },
+            alpha: { start: 0.9, end: 0 },
+            tint: 0xffd34d,
+            frequency: 25,
+            blendMode: 'ADD',
+          };
+        case 'GLITCH':
+          return {
+            ...base,
+            texture: 'block',
+            lifespan: 250,
+            speedX: { min: -180, max: -90 },
+            speedY: { min: -20, max: 20 },
+            scale: { start: 1.0, end: 0.2 },
+            alpha: { start: 0.8, end: 0 },
+            tint: [0x00ffff, 0xff0055, 0xffffff],
+            frequency: 20,
+            blendMode: 'NORMAL',
+          };
+      }
+    }
 
     switch (skinName) {
       case 'EMBER':
