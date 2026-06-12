@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { secureStorage } from '../config.js';
 import portal from '../platform/PortalAdapter.js';
 
 export default class BootScene extends Phaser.Scene {
@@ -66,8 +67,12 @@ export default class BootScene extends Phaser.Scene {
     }
 
     portal.init().finally(() => {
-      // Fade-in handled by MenuScene itself.
-      this.scene.start('Menu');
+      const hasSavedRevive = secureStorage.getItem('shadow-runner-revive-state');
+      if (hasSavedRevive) {
+        this.scene.start('Game');
+      } else {
+        this.scene.start('Menu');
+      }
     });
   }
 }
